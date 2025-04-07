@@ -10,17 +10,20 @@ def calculate_skin_friction(length):
 
 opti=asb.Opti()
 
-wing_airfoil = asb.Airfoil("sd7037")
+wing_airfoil = asb.Airfoil("goe447")
 tail_airfoil = asb.Airfoil("naca0010")
+
 
 airspeed=opti.variable(init_guess=15,lower_bound=5,upper_bound=40)
 wingspan=opti.variable(init_guess=3.5,lower_bound=2.5,upper_bound=6)
 chordlen = opti.variable(init_guess=0.26)
+cg_le_dist = opti.variable(init_guess=0,lower_bound=0,upper_bound=0.25*chordlen)#not more than 10cm behind LE
 nightime = opti.variable(init_guess=10,lower_bound=5)
-boom_length = 1.5
-hstab_span = 0.5
-hstab_chordlen = 0.15
-hstab_aoa = -2
+struct_defined_aoa = opti.variable(init_guess=2,lower_bound=0,upper_bound=3)
+boom_length = opti.variable(init_guess=2,lower_bound=1.5,upper_bound=4)
+hstab_span = opti.variable(init_guess=0.7, lower_bound=0.8, upper_bound=1.2)
+hstab_chordlen = opti.variable(init_guess=0.2,lower_bound=0.15,upper_bound=0.4)
+hstab_aoa = opti.variable(init_guess=-3,lower_bound=-8,upper_bound=-2)
 vstab_span = 0.3
 vstab_chordlen = 0.15
 polyhedral_angle =10
@@ -32,19 +35,19 @@ main_wing = asb.Wing(
                 asb.WingXSec(  # Root
                     xyz_le=[0, 0, 0],  # Coordinates of the XSec's leading edge, relative to the wing's leading edge.
                     chord=chordlen,
-                    twist=0,  # degrees
+                    twist=struct_defined_aoa,  # degrees
                     airfoil=wing_airfoil,  # Airfoils are blended between a given XSec and the next one.
                 ),
                 asb.WingXSec(  # Mid
                     xyz_le=[0.00, 0.5*wingspan/2, 0],
                     chord=chordlen,
-                    twist=0,
+                    twist=struct_defined_aoa,
                     airfoil=wing_airfoil,
                 ),
                 asb.WingXSec(  # Tip
                     xyz_le=[0.00, wingspan/2, np.sin(10*np.pi/180)*0.5 * wingspan/2],
                     chord=0.125,
-                    twist=0,
+                    twist=struct_defined_aoa,
                     airfoil=wing_airfoil,
                 ),
             ]
@@ -123,7 +126,7 @@ right_pod = asb.Fuselage( #right pod fuselage
 
 airplane = asb.Airplane(
     name="rev 6",
-    xyz_ref=[0.1*chordlen, 0, 0],  # CG location
+    xyz_ref=[cg_le_dist, 0, 0],  # CG location
     wings=[ main_wing, hor_stabilizer, vert_stabilizer],
     fuselages=[main_fuselage, left_pod, right_pod]
 )
@@ -154,12 +157,12 @@ aero["D_tot"] = aero["D"] + drag_parasite
 aero['power']=(aero['D_tot']*airspeed + 8 ) * 1.4 #8w to run avionics 40% surplus for non ideal conditions and charging
 
 ##Weight
-num_solar_cells = aero['power']/2.5 * 1.2 #Each SP produces 2.5W, we want additional 20percent surplus to charge
+num_solar_cells = aero['power']/1.375 * 1.4 #Each SP produces 2.5W, we want additional 20percent surplus to charge
 solar_cell_weight = 0.015*num_solar_cells*9.81
 
-current_draw = aero['power']/15 #4cell configuration is 15V
+current_draw = aero['power']/20 #4cell configuration is 15V
 num_packs = current_draw * nightime / 5 #Must last 10 hours, 5Ah per battery pack
-battery_weight = 0.300*num_packs*9.81
+battery_weight = 0.450*num_packs*9.81
 
 foam_volume = main_wing.volume() + hor_stabilizer.volume() + vert_stabilizer.volume()
 foam_weight = foam_volume * 30.0 * 9.81 #foam 30kg.m^2
@@ -170,7 +173,9 @@ fuselages_weight = 1.0*9.81 #1kg for all fuselage pods
 
 weight = solar_cell_weight + battery_weight + foam_weight+spar_weights+fuselages_weight
 
-opti.maximize(nightime)
+static_margin = (cg_le_dist-aero['x_np'])/main_wing.mean_aerodynamic_chord()
+
+opti.minimize(aero["power"])
 
 #Constraints
 """"
@@ -181,21 +186,28 @@ battery capacity (duration)
 aspect ratio
 """
 opti.subject_to(aero["L"]==weight)
-opti.subject_to(wing_airfoil.max_thickness()*chordlen>0.025) #must accomodate main spar (22mm)
+opti.subject_to(wing_airfoil.max_thickness()*chordlen>0.030) #must accomodate main spar (22mm)
 opti.subject_to(wingspan>0.13*num_solar_cells)#Must be able to fit all of our solar panels 13cm each
-
+opti.subject_to(nightime==15)
+opti.subject_to(static_margin>0.20)
+opti.subject_to(static_margin<0.35)
 sol=opti.solve()
 print(sol(airspeed))
 print(sol(nightime))
 print(sol(wingspan))
 print(sol(chordlen))
+print(sol(struct_defined_aoa))
 print(sol(hstab_aoa))
 print(sol(hstab_span))
+print(sol(hstab_chordlen))
 print(sol(solar_cell_weight),sol(num_solar_cells))
 print(sol(battery_weight),sol(num_packs))
 print(sol(foam_weight))
 print(sol(spar_weights))
 print(sol(fuselages_weight))
+print(sol(boom_length))
+print(sol(static_margin))
+print(sol(cg_le_dist))
 
 for k, v in aero.items():
     print(f"{k.rjust(4)} : {sol(aero[k])}")
