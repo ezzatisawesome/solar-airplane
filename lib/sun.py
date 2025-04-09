@@ -1,7 +1,4 @@
 import aerosandbox.numpy as np
-import matplotlib.pyplot as plt
-
-import aerosandbox.numpy as np
 
 
 # Function to calculate the declination (δ) of the Sun
