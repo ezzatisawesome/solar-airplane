@@ -3,27 +3,9 @@ import aerosandbox.numpy as np
 from lib.sun import calculate_sun_angles
 from lib.aero import calculate_skin_friction
 from datetime import datetime, timedelta
-
+from aerosandbox.library import power_solar
 
 opti = asb.Opti()
-
-
-### VARIABLES ###
-#-- Aerodynamic variables --#
-airspeed = opti.variable(init_guess=15, lower_bound=5, upper_bound=40)
-wingspan = opti.variable(init_guess=3.5, lower_bound=2.5, upper_bound=6)
-chordlen = opti.variable(init_guess=0.26)
-cg_le_dist = opti.variable(init_guess=0, lower_bound=0)
-struct_defined_aoa = opti.variable(init_guess=2, lower_bound=0, upper_bound=3)
-hstab_span = opti.variable(init_guess=0.8, lower_bound=0.8, upper_bound=1.2)
-hstab_chordlen = opti.variable(init_guess=0.2, lower_bound=0.15, upper_bound=0.4)
-hstab_aoa = opti.variable(init_guess=-3, lower_bound=-8, upper_bound=-2)
-boom_length = opti.variable(init_guess=2, lower_bound=1.5, upper_bound=4)
-
-#-- Power --#
-#nightime = opti.variable(init_guess=10, lower_bound=5)
-battery_capacity = opti.variable(init_guess=700, lower_bound=111)
-n_solar_panels = opti.variable(init_guess=20, lower_bound=10)
 
 
 ### CONSTANTS ###
@@ -36,13 +18,31 @@ polyhedral_angle = 10
 wing_airfoil = asb.Airfoil("goe447")
 tail_airfoil = asb.Airfoil("naca0010")
 
-#-- Power --#
-
-
 #-- Mission constants --#
-mission_date = date_time = datetime(2025, 5, 15, 0)
+N = 100  # Number of discretization points
+time = np.linspace(0, 24*60*60, N)
+mission_date = date_time = datetime(2025, 5, 15, 14)
 lat = 37.398928
 long = -122.152097
+
+
+### VARIABLES ###
+#-- Aerodynamic variables --#
+airspeed = opti.variable(init_guess=15, lower_bound=5, upper_bound=40, scale=15)
+wingspan = opti.variable(init_guess=3.5, lower_bound=2.5, upper_bound=6, scale=3.5)
+chordlen = opti.variable(init_guess=0.26, scale=0.26)
+cg_le_dist = opti.variable(init_guess=0, lower_bound=0, scale=1)
+struct_defined_aoa = opti.variable(init_guess=2, lower_bound=0, upper_bound=3, scale=1)
+hstab_span = opti.variable(init_guess=0.8, lower_bound=0.8, upper_bound=1.2, scale=1)
+hstab_chordlen = opti.variable(init_guess=0.2, lower_bound=0.15, upper_bound=0.4, scale=0.2)
+hstab_aoa = opti.variable(init_guess=-3, lower_bound=-8, upper_bound=-2, scale=1)
+boom_length = opti.variable(init_guess=2, lower_bound=1.5, upper_bound=4, scale=2)
+
+#-- Power --#
+#nightime = opti.variable(init_guess=10, lower_bound=5)
+battery_cap = opti.variable(init_guess=1000, lower_bound=100, scale=1000)  # initial battery energy in Wh
+battery_state = opti.variable(n_vars = N, init_guess=500, scale=500)
+n_solar_panels = opti.variable(init_guess=30, lower_bound=10, scale=30)
 
 
 ### PLANE GEOMETRY ###
@@ -194,35 +194,33 @@ aero["power"] = (aero["D_tot"] * airspeed + 8) * 1.4  # 8w to run avionics 40% s
 
 
 ### POWER ###
-time_delta = 600  # seconds
-N_steps = int(24 * 60 * 60 // time_delta)
+# Precompute power profile
+panel_wattage_profile = []
+dt = (time[1] - time[0]) / 3600.0  # time step in hours
 
-battery_states = opti.variable(n_vars=(N_steps + 1))
+for i in range(N):
+    elevation = power_solar.solar_elevation_angle(lat, 100, time[i])
+    panel_amps = max(0, 6 * np.sin(np.deg2rad(elevation)))
+    wattage = panel_amps * 0.55  # W per panel
+    panel_wattage_profile.append(wattage)
 
-opti.para
+for i in range(N - 1):  # Fix is here
+    power_generated = panel_wattage_profile[i] * n_solar_panels
+    power_used = aero["power"]
+    net_energy = (power_generated - power_used) * dt  # Wh
+    new_bat_state = np.fmin(battery_state[i] + net_energy, battery_cap)
 
-opti.subject_to(battery_states[0] == battery_capacity)
-for i in range(N_steps):
-    # Update current simulation time
-    current_time = mission_date + timedelta(seconds=i * time_delta)
-    
-    # Power generation using time-updated sun angles
-    elevation, azimuth = calculate_sun_angles(lat, long, current_time)
-    panel_amps = max(0, 6 * np.sin(np.deg2rad(elevation)))  # constant numeric value at this step
-    panel_wattage = panel_amps * 5.5
-    
-    # Net power (solar generation minus required power)
-    power_net = panel_wattage * n_solar_panels - aero["power"]
-    energy_net = power_net * time_delta / 3600.0  # convert from watts to Wh per time step
-
-    opti.subject_to(battery_states[i + 1] == battery_states[i] + energy_net)
-    opti.subject_to(battery_states[i + 1] > 0)
+    opti.subject_to([
+        battery_state[i + 1] == new_bat_state,
+        battery_state[i] >= 0,
+        battery_state[i] <= battery_cap
+    ])
 
 
 ### WEIGHT ###
 #-- Power mass --#
 solar_cell_mass = 0.015 * n_solar_panels
-n_batt_packs = battery_capacity / (3.7 * 6 * 5)
+n_batt_packs = np.max(battery_cap) / (3.7 * 6 * 5)
 battery_mass = 0.450 * n_batt_packs
 
 #-- Wing mass --#
@@ -242,7 +240,8 @@ static_margin = (cg_le_dist - aero["x_np"]) / main_wing.mean_aerodynamic_chord()
 
 
 ### OPTIMIZE ###
-opti.minimize(aero["power"])
+total_energy_used = sum([(aero["power"] - panel_wattage_profile[i] * n_solar_panels) * dt for i in range(N - 1)])
+opti.minimize(total_energy_used)
 
 #-- Aerodynamic --#
 opti.subject_to(aero["L"] == weight) # Lift equal to weight
@@ -253,7 +252,6 @@ opti.subject_to(static_margin > 0.20)
 opti.subject_to(static_margin < 0.35)
 
 #-- Power --#
-# opti.subject_to(sim_min_battery_cap > 0)
 
 #-- SOLVE --#
 sol = opti.solve()
