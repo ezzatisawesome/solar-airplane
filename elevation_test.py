@@ -2,22 +2,25 @@ import matplotlib.pyplot as plt
 from aerosandbox.library import power_solar
 import aerosandbox.numpy as np
 
+N = 100  # Number of discretization points
+time = np.linspace(0, 24*60*60, N) # s
+dt = np.diff(time)[0] # s
+mission_date = 100
 lat = 37.7749
-time = np.linspace(0, 24*60*60, 100)
 
 elevation_arr = []
 power_arr = []
 battery_state = [800]  # Start with a fully charged 10 Wh battery
-for t in time:
-    elevation = power_solar.solar_elevation_angle(lat, 100, t)
-    elevation_arr.append(elevation)
+battery_cap = 1000
+
+for i in range(N):
+    elevation = power_solar.solar_elevation_angle(lat, mission_date, time[i])
+    power = np.softmax(0, 6 * np.sin(np.deg2rad(elevation)), hardness=10) * 0.55 * 50  # W per panel
+    net_energy = (power - 60) * (dt / 3600) # Convert W to Wh (since time is in seconds)
+    new_battery_state = np.softmin(battery_state[-1] + net_energy, battery_cap, hardness=10)
     
-    power = np.softmax(0, 6 * np.sin(np.deg2rad(elevation)), hardness=10) * 0.55 * 30  # W per panel
     power_arr.append(power)
-    
-    # Update battery state (charging or discharging)
-    dt = np.diff(time)
-    new_battery_state = battery_state[-1] + (power - 60) * (dt / 3600) # Convert W to Wh (since time is in seconds)
+    elevation_arr.append(elevation)
     battery_state.append(new_battery_state)
 
 time_hours = time / 3600

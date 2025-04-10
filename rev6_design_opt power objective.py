@@ -8,13 +8,13 @@ def calculate_skin_friction(length):
     cf=0.455/(np.log10(reynolds)**2.58) #Prandtl-Schlichting’s approximation
     return cf
 
-opti=asb.Opti()
+opti=asb.Opti(cache_filename="power_objective.json")
 
 wing_airfoil = asb.Airfoil("sd7037")
 tail_airfoil = asb.Airfoil("naca0010")
 
 airspeed=opti.variable(init_guess=15,lower_bound=5,upper_bound=40)
-wingspan=opti.variable(init_guess=3.5,lower_bound=2.5,upper_bound=5)
+wingspan=opti.variable(init_guess=3.5,lower_bound=2.5,upper_bound=10)
 chordlen = opti.variable(init_guess=0.26)
 boom_length = 1.5
 hstab_span = 0.5
@@ -152,13 +152,46 @@ aero["CD_tot"] = aero["CD"]+CD0
 aero["D_tot"] = aero["D"] + drag_parasite
 aero['power']=(aero['D_tot']*airspeed + 8 ) * 1.4 #8w to run avionics 40% surplus for non ideal conditions and charging
 
+
+
+## POWER
+from aerosandbox.library import power_solar
+
+N = 100  # Number of discretization points
+time = np.linspace(0, 24*60*60, N) # s
+dt = np.diff(time)[0] # s
+mission_date = 100
+lat = 37.398928
+
+battery_cap = opti.variable(init_guess=1500, lower_bound=100, scale=1000, category="power")  # initial battery energy in Wh
+battery_states = opti.variable(n_vars = N, init_guess=500, scale=500, category="power")
+opti.subject_to(battery_states[0] == battery_cap)
+
+n_solar_panels = opti.variable(init_guess=40, lower_bound=10, scale=30, category="power")
+
+for i in range(N-1):
+    elevation = power_solar.solar_elevation_angle(lat, mission_date, time[i])
+    panel_amps = np.softmax(0, 6 * np.sin(np.deg2rad(elevation)), hardness=10)
+    panel_wattage = panel_amps * 0.55  # W per panel
+
+    power_generated = panel_wattage * n_solar_panels
+    power_used = aero["power"]
+    net_energy = (power_generated - power_used) * (dt / 3600)  # Wh
+
+    battery_update = np.softmin(battery_states[i] + net_energy, battery_cap, hardness=10)
+    # The battery state integration constraint:
+    opti.subject_to(battery_states[i+1] == battery_update)
+
+
+opti.subject_to(battery_states > 0)
+
+
 ##Weight
-num_solar_cells = aero['power']/2.5 * 1.2 #Each SP produces 2.5W, we want additional 20percent surplus to charge
-solar_cell_weight = 0.015*num_solar_cells*9.81
+solar_cell_weight = 0.015*n_solar_panels*9.81
 
 current_draw = aero['power']/15 #4cell configuration is 15V
-num_packs = current_draw * 10 / 5 #Must last 10 hours, 5Ah per battery pack
-battery_weight = 0.300*num_packs*9.81
+num_packs = battery_cap / (5 * 6 * 3.7)
+battery_weight = num_packs * 0.450 * 9.81
 
 foam_volume = main_wing.volume() + hor_stabilizer.volume() + vert_stabilizer.volume()
 foam_weight = foam_volume * 30.0 * 9.81 #foam 30kg.m^2
@@ -181,15 +214,16 @@ aspect ratio
 """
 opti.subject_to(aero["L"]==weight)
 opti.subject_to(wing_airfoil.max_thickness()*chordlen>0.025) #must accomodate main spar (22mm)
-opti.subject_to(wingspan>0.13*num_solar_cells)#Must be able to fit all of our solar panels 13cm each
+opti.subject_to(wingspan>0.13*n_solar_panels)#Must be able to fit all of our solar panels 13cm each
 
 sol=opti.solve()
+opti.save_solution()
 print(sol(airspeed))
 print(sol(wingspan))
 print(sol(chordlen))
 print(sol(hstab_aoa))
 print(sol(hstab_span))
-print(sol(solar_cell_weight),sol(num_solar_cells))
+print(sol(solar_cell_weight),sol(n_solar_panels))
 print(sol(battery_weight),sol(num_packs))
 print(sol(foam_weight))
 print(sol(spar_weights))
