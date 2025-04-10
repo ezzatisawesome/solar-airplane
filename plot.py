@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-with open('output/power_objective.json') as user_file:
+with open('output/power_objective2.json') as user_file:
   file_contents = user_file.read()
 parsed_json = json.loads(file_contents)
 battery_states = parsed_json["power"][1]
