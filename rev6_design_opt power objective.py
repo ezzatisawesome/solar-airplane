@@ -14,7 +14,7 @@ wing_airfoil = asb.Airfoil("sd7037")
 tail_airfoil = asb.Airfoil("naca0010")
 
 airspeed=opti.variable(init_guess=15,lower_bound=5,upper_bound=40)
-wingspan=opti.variable(init_guess=3.5,lower_bound=2.5,upper_bound=15)
+wingspan=opti.variable(init_guess=3.5,lower_bound=2.5,upper_bound=100)
 chordlen = opti.variable(init_guess=0.26)
 boom_length = 1.5
 hstab_span = 0.5
@@ -191,7 +191,6 @@ opti.subject_to(battery_states > 0)
 ##Weight
 solar_cell_weight = 0.015*n_solar_panels*9.81
 
-current_draw = aero['power']/15 #4cell configuration is 15V
 num_packs = battery_cap / (5 * 6 * 3.7)
 battery_weight = num_packs * 0.450 * 9.81
 
