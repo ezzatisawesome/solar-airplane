@@ -8,13 +8,13 @@ def calculate_skin_friction(length):
     cf=0.455/(np.log10(reynolds)**2.58) #Prandtl-Schlichting’s approximation
     return cf
 
-opti=asb.Opti(cache_filename="power_objective.json")
+opti=asb.Opti(cache_filename="output/power_objective2.json")
 
 wing_airfoil = asb.Airfoil("sd7037")
 tail_airfoil = asb.Airfoil("naca0010")
 
 airspeed=opti.variable(init_guess=15,lower_bound=5,upper_bound=40)
-wingspan=opti.variable(init_guess=3.5,lower_bound=2.5,upper_bound=10)
+wingspan=opti.variable(init_guess=3.5,lower_bound=2.5,upper_bound=15)
 chordlen = opti.variable(init_guess=0.26)
 boom_length = 1.5
 hstab_span = 0.5
@@ -165,7 +165,10 @@ lat = 37.398928
 
 battery_cap = opti.variable(init_guess=1500, lower_bound=100, scale=1000, category="power")  # initial battery energy in Wh
 battery_states = opti.variable(n_vars = N, init_guess=500, scale=500, category="power")
-opti.subject_to(battery_states[0] == battery_cap)
+opti.subject_to([
+    battery_states[0] == battery_cap,
+    battery_states[N-1] == battery_cap
+])
 
 n_solar_panels = opti.variable(init_guess=40, lower_bound=10, scale=30, category="power")
 
@@ -181,7 +184,6 @@ for i in range(N-1):
     battery_update = np.softmin(battery_states[i] + net_energy, battery_cap, hardness=10)
     # The battery state integration constraint:
     opti.subject_to(battery_states[i+1] == battery_update)
-
 
 opti.subject_to(battery_states > 0)
 
@@ -202,7 +204,7 @@ fuselages_weight = 1.0*9.81 #1kg for all fuselage pods
 
 weight = solar_cell_weight + battery_weight + foam_weight+spar_weights+fuselages_weight
 
-opti.minimize(aero['power'])
+opti.minimize(wingspan)
 
 #Constraints
 """"
