@@ -16,6 +16,11 @@ lat = 37.398928
 wing_airfoil = asb.Airfoil("sd7037")
 tail_airfoil = asb.Airfoil("naca0010")
 
+vstab_span = 0.3
+vstab_chordlen = 0.15
+
+polyhedral_angle = 10
+
 # --- Power ---
 N = 100  # Number of discretization points
 time = np.linspace(0, 24 * 60 * 60, N)  # s
@@ -25,20 +30,18 @@ solar_cell_efficiency = 0.243 * 0.9 # 24.3% efficient
 
 # ---------- VARIABLES ----------
 # --- Aerodynamic ---
-airspeed = opti.variable(init_guess=15, lower_bound=5, upper_bound=30, scale=10)
-wingspan = opti.variable(init_guess=3.4, lower_bound=2, upper_bound=30, scale=10)
-aoa = opti.variable(init_guess=3, lower_bound=-1, upper_bound=5)
-chordlen = opti.variable(init_guess=0.26, scale=0.25)
-polyhedral_angle = 10
+airspeed = opti.variable(init_guess=15, lower_bound=5, upper_bound=30, scale=5)
+wingspan = opti.variable(init_guess=3.4, lower_bound=2, upper_bound=30, scale=2)
+chordlen = opti.variable(init_guess=0.26, scale=1)
+struct_defined_aoa = opti.variable(init_guess=2, lower_bound=0, upper_bound=7, scale=1)
 
-hstab_chordlen = 0.15
 hstab_span = opti.variable(init_guess=0.5, lower_bound=0.3, upper_bound=2, scale=0.5)
+hstab_chordlen = opti.variable(init_guess=0.2, lower_bound=0.15, upper_bound=0.4, scale=0.2)
 hstab_aoa = opti.variable(init_guess=-5, lower_bound=-5, upper_bound=3)
 
-vstab_span = 0.3
-vstab_chordlen = 0.15
+# cg_le_dist = opti.variable(init_guess=0, lower_bound=0, scale=1)
 
-boom_length = 1.5
+boom_length = opti.variable(init_guess=2, lower_bound=1.5, upper_bound=4, scale=1)
 
 # --- Power ---
 n_solar_panels = opti.variable(init_guess=40, lower_bound=10, category="power", scale=10)
@@ -58,19 +61,19 @@ main_wing = asb.Wing(
                 0,
             ],  # Coordinates of the XSec's leading edge, relative to the wing's leading edge.
             chord=chordlen,
-            twist=0,  # degrees
+            twist=struct_defined_aoa,  # degrees
             airfoil=wing_airfoil,  # Airfoils are blended between a given XSec and the next one.
         ),
         asb.WingXSec(  # Mid
             xyz_le=[0.00, 0.5 * wingspan / 2, 0],
             chord=chordlen,
-            twist=0,
+            twist=struct_defined_aoa,
             airfoil=wing_airfoil,
         ),
         asb.WingXSec(  # Tip
             xyz_le=[0.00, wingspan / 2, np.sin(10 * np.pi / 180) * 0.5 * wingspan / 2],
             chord=0.125,
-            twist=0,
+            twist=struct_defined_aoa,
             airfoil=wing_airfoil,
         ),
     ],
@@ -171,11 +174,9 @@ vlm = asb.VortexLatticeMethod(
     airplane=airplane,
     op_point=asb.OperatingPoint(
         velocity=airspeed,  # m/s
-        alpha=aoa,  # degree
     ),
 )
 aero = vlm.run_with_stability_derivatives()  # Returns a dictionary
-aerodyanmic_power = aero["D"] * airspeed
 
 # VLM does not calcualte parasitic drag, we must add this manually
 CD0 = (
@@ -206,7 +207,7 @@ for i in range(N-1):
 
     solar_area = n_solar_panels * 0.125**2 # m^2
     power_generated = solar_flux * solar_area * solar_cell_efficiency
-    power_used = aero["power"] + 8  # 8w to run avionics
+    power_used = (aero["power"] + 8) * 1.2  # 8w to run avionics
     net_energy = (power_generated - power_used) * (dt / 3600)  # Wh
 
     battery_update = np.softmin(battery_states[i] + net_energy, battery_cap, hardness=10)
@@ -234,11 +235,20 @@ weight = 9.81 * (
     fuselages_mass
 )
 
+# ---------- STABILITY ----------
+# static_margin = (cg_le_dist - aero["x_np"]) / main_wing.mean_aerodynamic_chord()
+
+
 # ---------- CONSTRAINTS ----------
 # --- Aerodynamic ---
 opti.subject_to(aero["L"] == weight)
 opti.subject_to(wing_airfoil.max_thickness() * chordlen > 0.030)  # must accomodate main spar (22mm)
 opti.subject_to(wingspan > 0.13 * n_solar_panels)  # Must be able to fit all of our solar panels 13cm each
+
+# --- Stability ---
+# opti.subject_to(cg_le_dist <= 0.25 * chordlen)
+# opti.subject_to(static_margin > 0.1)
+# opti.subject_to(static_margin < 0.5)
 
 # --- Power ---
 opti.subject_to([
