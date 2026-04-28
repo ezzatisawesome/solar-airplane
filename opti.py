@@ -5,7 +5,6 @@ from aerosandbox.atmosphere.atmosphere import Atmosphere
 import numpy as onp
 from pathlib import Path
 from datetime import datetime, timezone
-# Workaround for some AeroSandbox installs where `aerosandbox.library.power_solar` forgets to import Atmosphere.
 
 from lib.artifacts import process_raw_values, run_id_random, write_json
 from lib.exports import export_xflr5_xml_from_soln, export_cadquery_step
@@ -15,6 +14,7 @@ from lib.models import apc_prop, hacker_motor_mass, hacker_motor_resistance
 
 opti = asb.Opti()
 opti.solver("ipopt")
+
 
 
 ### CONSTANTS
@@ -67,7 +67,7 @@ N = 180 # Number of discretization points.
 time = onp.linspace(0, 24 * 60 * 60, N) # s (numeric; does not need to be symbolic)
 dt = onp.diff(time)[0]  # s
 solar_panel_side_length = 0.125 # m (12.5cm)
-solar_panels_n_rows = 2
+solar_panel_n_rows = 2
 solar_encapsulation_eff_hit = 0.1 # Estimated 10% efficieincy loss from encapsulation.
 solar_cell_efficiency = 0.243 * (1 - solar_encapsulation_eff_hit) # Efficiency of the solar cells.
 energy_generation_margin = 1.05 # Losses in energy generation.
@@ -111,7 +111,7 @@ propeller_diameter = opti.parameter(value=0.4)
 motor_kv = opti.variable(init_guess=500, lower_bound=50, upper_bound=2000, scale=100, category="motor_kv")
 
 ## Avionics
-solar_panels_n = opti.variable(init_guess=50, lower_bound=10, scale=10, category="solar_panels_n")
+solar_panel_n = opti.variable(init_guess=50, lower_bound=10, scale=10, category="solar_panel_n")
 battery_capacity = opti.variable(init_guess=450, lower_bound=100, scale=100, category="battery_capacity") # initial battery energy in Wh
 battery_states = opti.variable(n_vars=N, init_guess=500, scale=100, category="battery_states")
 
@@ -149,15 +149,21 @@ main_wing = asb.Wing(
             twist=struct_defined_aoa,
             airfoil=wing_airfoil,
         ),
-        asb.WingXSec(  # Mid
+        asb.WingXSec(
             xyz_le=[0.00, boom_y, 0],
             chord=chordlen,
             twist=struct_defined_aoa,
             airfoil=wing_airfoil,
         ),
+        asb.WingXSec(
+            xyz_le=[0.00, boom_y+wingspan*boom_spacing_frac/2, np.sind(polyhedral_angle)*(boom_y+wingspan*boom_spacing_frac/2)],
+            chord=chordlen,
+            twist=struct_defined_aoa,
+            airfoil=wing_airfoil,
+        ),
         asb.WingXSec(  # Tip
-            xyz_le=[0.00, wingspan / 2, np.sin(polyhedral_angle * np.pi / 180) * 0.5 * wingspan / 2],
-            chord=chordlen / 2,
+            xyz_le=[0.00, wingspan/2, np.sind(polyhedral_angle)*(wingspan*(1-boom_spacing_frac)/2)],
+            chord=chordlen,
             twist=struct_defined_aoa,
             airfoil=wing_airfoil,
         ),
@@ -294,6 +300,7 @@ airplane = asb.Airplane(
 )
 
 
+
 ### AERODYNAMICS
 vlm = asb.AeroBuildup(
     airplane=airplane,
@@ -312,8 +319,10 @@ aero = vlm.run_with_stability_derivatives(
 )
 
 
+
 ### STABILITY
 static_margin = (aero["x_np"] - cg_le_dist) / main_wing.mean_aerodynamic_chord()
+
 
 
 ### PROPULSION
@@ -344,10 +353,12 @@ propeller_rpm_max = propeller_rads_per_sec * 30 / np.pi
 # Climb.
 thrust_climb = togw_design * g * np.sin(min_climb_angle * np.pi / 180) + aero["D"]
 
+
+
 ### POWER
 for i in range(N-1):
     solar_flux = solar_flux_profile[i]  # W / m^2 (numeric constant)
-    solar_area = solar_panels_n * solar_panel_side_length**2 # m^2
+    solar_area = solar_panel_n * solar_panel_side_length**2 # m^2
     power_generated = solar_flux * solar_area * solar_cell_efficiency / energy_generation_margin
     power_used = (power_cruise*propeller_n + 8 + 1)  # 8W avionics, 1W for NavLights
     net_energy = (power_generated - power_used) * (dt / 3600)  # Wh
@@ -359,7 +370,7 @@ for i in range(N-1):
 
 ### Mass
 # Power
-mass_solar_cells = 0.0075 * solar_panels_n
+mass_solar_cells = 0.0075 * solar_panel_n
 mass_power_board = 0.050 * 2 # 75g estimate for each power board
 mass_batteries = propulsion_electric.mass_battery_pack(
     battery_capacity_Wh=battery_capacity,
@@ -448,10 +459,10 @@ opti.subject_to(power_out_max >= thrust_climb * airspeed)
 # Stall-speed margin (equivalent to constraining required CL below CLmax at cruise)
 V_stall = np.sqrt(2 * (togw_design * g) / (operating_atm.density() * S_w * CLmax_cruise))
 opti.subject_to(airspeed >= stall_speed_margin * V_stall)
-opti.subject_to(chordlen >= solar_panels_n_rows * 0.13 + 0.05) # ! Justify this addition of 0.1
+opti.subject_to(chordlen >= solar_panel_n_rows * 0.13 + 0.05) # ! Justify this addition of 0.1
 opti.subject_to(wing_airfoil.max_thickness() * chordlen >= 0.025)  # must accomodate batteries (20mm)
-opti.subject_to(wingspan >= 0.13 * solar_panels_n / solar_panels_n_rows)  # Must be able to fit all of our solar panels 13cm each
-opti.subject_to(hstab_chordlen >= 0.125) # 12.5cm to make room for elevator & manufacturability
+opti.subject_to(wingspan >= 0.13 * solar_panel_n / solar_panel_n_rows)  # Must be able to fit all of our solar panels 13cm each
+opti.subject_to(hstab_chordlen >= 0.135) # 13.5cm to make room for panels, elevator, and manufacturing
 opti.subject_to(vstab_root_chord >= hstab_chordlen)  # enforce an actual taper (root >= tip) and avoid negative root chord
 
 # Stability
@@ -468,6 +479,7 @@ opti.subject_to(battery_states[0] <= battery_states[N-1])
 opti.subject_to(num_packs <= 8)
 
 
+
 ### SOLVE
 opti.minimize(wingspan)
 
@@ -480,7 +492,7 @@ except Exception as e:
     # print(f"  alpha_cruise: {opti.debug.value(alpha_cruise):.3f} deg")
     print(f"  togw_design: {opti.debug.value(togw_design):.3f} kg")
     print(f"  power_out_max: {opti.debug.value(power_out_max):.3f} W")
-    print(f"  solar_panels_n: {opti.debug.value(solar_panels_n):.3f}")
+    print(f"  solar_panel_n: {opti.debug.value(solar_panel_n):.3f}")
     print(f"  battery_capacity: {opti.debug.value(battery_capacity):.3f} Wh")
 
     battery_states_vals = opti.debug.value(battery_states)
@@ -593,12 +605,12 @@ report_raw = {
         "boom_spacing_frac": boom_spacing_frac,
     },
     "Power": {
-        "solar_panels_n": solar_panels_n,
+        "solar_panel_n": solar_panel_n,
         "battery_capacity": battery_capacity,
         "battery_states": battery_states,
         "battery_voltage": battery_voltage,
         "solar_panel_side_length": solar_panel_side_length,
-        "solar_panels_n_rows": solar_panels_n_rows,
+        "solar_panel_n_rows": solar_panel_n_rows,
         "solar_encapsulation_eff_hit": solar_encapsulation_eff_hit,
         "solar_cell_efficiency": solar_cell_efficiency,
         "energy_generation_margin": energy_generation_margin,
@@ -634,6 +646,8 @@ report_raw = {
     },
 }
 
+
+
 ### OUTPUT ARTIFACTS
 # Only create artifacts if simulation succeeded.
 if sol is None:
@@ -655,19 +669,19 @@ else:
     except Exception as e:
         print(f"[export_xflr5_xml_from_soln] skipped due to error: {e}")
     
-    # Export CAD as STEP file.
-    try:
-        export_cadquery_step(airplane_sol=airplane_sol, out_path=run_dir / "airplane.step")
-    except Exception as e:
-        print(f"[export_cadquery_step] skipped due to error: {e}")
+    # # Export CAD as STEP file.
+    # try:
+    #     export_cadquery_step(airplane_sol=airplane_sol, out_path=run_dir / "airplane.step")
+    # except Exception as e:
+    #     print(f"[export_cadquery_step] skipped due to error: {e}")
     
-    # Save AeroSandbox airplane object.
-    try:
-        airplane_sol.save(filename=str(run_dir / "airplane.aero"))
-    except Exception as e:
-        print(f"[airplane.save] skipped due to error: {e}")
+    # # Save AeroSandbox airplane object.
+    # try:
+    #     airplane_sol.save(filename=str(run_dir / "airplane.aero"))
+    # except Exception as e:
+    #     print(f"[airplane.save] skipped due to error: {e}")
     
-    print(f"[artifacts] wrote: {run_dir / 'soln.json'}")
+    # print(f"[artifacts] wrote: {run_dir / 'soln.json'}")
 
     # Draw airplane airplane_sol.draw()
-    airplane_sol.draw()
+    airplane_sol.draw() 

@@ -3,106 +3,203 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Aircraft Mass Viewer - Three.js</title>
+  <title>AircraftView</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; overflow: hidden; background: #1a1a1a; }
-    #canvas-container { width: 100vw; height: 100vh; position: relative; }
+    body { font-family: Arial, sans-serif; overflow-x: hidden; overflow-y: auto; background: #1a1a1a; color: #e0e0e0; }
 
-    #sidebar {
-      position: fixed; top: 10px; right: 10px;
-      width: 350px; max-height: calc(100vh - 20px);
-      background: rgba(245,245,245,0.95);
-      padding: 15px; overflow-y: auto;
-      border: 1px solid #ddd; border-radius: 5px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-      z-index: 1000;
+    #canvas-container {
+      width: 100vw;
+      height: 60vh;
+      position: relative;
+      background: #1a1a1a;
     }
-    #sidebar h2 { margin-top: 0; color: #333; font-size: 18px; }
-    #sidebar h3 { margin-top: 15px; margin-bottom: 10px; color: #555; font-size: 14px; }
-    #sidebar table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 12px; }
-    #sidebar table td { padding: 5px; border-bottom: 1px solid #eee; }
-    #sidebar table td:first-child { font-weight: bold; width: 60%; }
+
+    #top-overlay {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      right: 10px;
+      z-index: 1000;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #cfcfcf;
+      font-size: 12px;
+      font-weight: 400;
+      letter-spacing: 0.1px;
+      pointer-events: none;
+    }
+    #top-overlay .app-title {
+      font-size: 14px;
+      padding: 4px 8px;
+      border: 1px solid #ffffff;
+      border-radius: 0px;
+      color: #ffffff;
+    }
+    #top-overlay .left,
+    #top-overlay .right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      pointer-events: auto;
+    }
+    #top-overlay a {
+      color: #cfcfcf;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      opacity: 0.9;
+    }
+    #top-overlay a:hover {
+      opacity: 1.0;
+    }
+    #top-overlay .sep {
+      opacity: 0.5;
+    }
+
+    #content-area {
+      padding: 0;
+      width: 100%;
+      margin: 0;
+    }
+
+    .tabs-container {
+      margin-top: 20px;
+    }
+
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-bottom: 20px;
+      border-bottom: 2px solid #444;
+    }
+
+    .tab-button {
+      background: rgba(40,40,40,0.8);
+      color: #b0b0b0;
+      border: none;
+      padding: 10px 20px;
+      cursor: pointer;
+      font-size: 14px;
+      border-radius: 5px 5px 0 0;
+      transition: all 0.3s ease;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+    }
+
+    .tab-button:hover {
+      background: rgba(50,50,50,0.9);
+      color: #e0e0e0;
+    }
+
+    .tab-button.active {
+      background: rgba(30,30,30,0.95);
+      color: #4CAF50;
+      border-bottom: 2px solid #4CAF50;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
 
     #legend {
-      position: fixed; top: 10px; left: 10px;
-      background: rgba(255,255,255,0.95);
-      padding: 15px; border-radius: 5px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-      z-index: 1000;
-      max-height: calc(100vh - 20px);
-      overflow-y: auto;
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(30,30,30,0.95);
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
       min-width: 200px;
+      max-width: 250px;
+      max-height: calc(60vh - 20px);
+      overflow-y: auto;
+      z-index: 1000;
+      border: 1px solid #444;
     }
-    #legend h3 { margin-top: 0; margin-bottom: 10px; color: #333; }
-    .legend-item { display: flex; align-items: center; padding: 5px 0; cursor: pointer; user-select: none; }
-    .legend-item:hover { background: rgba(0,0,0,0.05); }
-    .legend-color { width: 20px; height: 20px; border: 1px solid #333; margin-right: 8px; flex-shrink: 0; }
+    #legend h3 { margin-top: 0; margin-bottom: 10px; color: #4CAF50; font-size: 16px; }
+    .legend-item { display: flex; align-items: center; padding: 5px 0; cursor: pointer; user-select: none; color: #e0e0e0; }
+    .legend-item:hover { background: rgba(255,255,255,0.1); border-radius: 4px; }
+    .legend-color { width: 20px; height: 20px; border: 1px solid #555; margin-right: 8px; flex-shrink: 0; border-radius: 3px; }
     .legend-item.hidden { opacity: 0.3; }
 
+    #sidebar {
+      flex: 1;
+      background: rgba(30,30,30,0.95);
+      padding: 20px;
+      border-radius: 0px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+      min-width: 400px;
+    }
+    #sidebar h1 { margin-top: 0; color: #4CAF50; font-size: 24px; }
+    #sidebar h2 { margin-top: 0; color: #4CAF50; font-size: 20px; }
+    #sidebar h3 { margin-top: 15px; margin-bottom: 10px; color: #4CAF50; font-size: 16px; }
+    #sidebar h4 { margin-top: 10px; margin-bottom: 8px; color: #4CAF50; font-size: 14px; }
+    #sidebar p { color: #aaa; }
+    #sidebar table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+    #sidebar table td { padding: 8px; border-bottom: 1px solid #444; color: #e0e0e0; }
+    #sidebar table td:first-child { font-weight: bold; width: 60%; color: #b0b0b0; }
+
     #info {
-      position: fixed; bottom: 10px; left: 10px;
-      background: rgba(0,0,0,0.7);
-      color: white; padding: 10px; border-radius: 5px;
-      font-size: 12px; z-index: 1000;
+      position: fixed;
+      bottom: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.8);
+      color: #e0e0e0;
+      padding: 10px 15px;
+      border-radius: 5px;
+      font-size: 12px;
+      z-index: 1000;
+      border: 1px solid #444;
     }
 
     #tooltip {
       position: fixed;
-      background: rgba(0,0,0,0.9);
-      color: white;
+      background: rgba(20,20,20,0.95);
+      color: #e0e0e0;
       padding: 10px 15px;
       border-radius: 5px;
       font-size: 12px;
       pointer-events: none;
       z-index: 2000;
       display: none;
-      max-width: 300px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      max-width: 320px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+      border: 1px solid #444;
     }
     #tooltip.visible { display: block; }
     #tooltip h4 { margin: 0 0 5px 0; color: #4CAF50; font-size: 14px; }
-    #tooltip p { margin: 3px 0; }
-    
-    .energy-balance-image {
-      width: 100%;
-      height: auto;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-      cursor: pointer;
-      transition: transform 0.3s ease;
-      margin-top: 10px;
-    }
-    .energy-balance-image:hover {
-      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-    }
-    .energy-balance-image.zoomed {
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%) scale(2);
-      z-index: 10000;
-      max-width: 90vw;
-      max-height: 90vh;
-      object-fit: contain;
-      background: rgba(255,255,255,0.95);
-      padding: 10px;
-      border-radius: 8px;
-    }
+    #tooltip p { margin: 3px 0; color: #e0e0e0; }
   </style>
 </head>
 <body>
-  <div id="canvas-container"></div>
+  <div id="canvas-container">
 
-  <div id="legend">
-    <h3>Components</h3>
-    <div id="legend-content"></div>
+    <div id="top-overlay" aria-label="AircraftView header">
+      <div class="left"></div>
+      <div class="right" aria-label="Downloads">
+        <div class="app-title">AircraftView</div>
+        <a href="airplane.step" target="_blank" rel="noopener" download>.step</a>
+        <a href="airplane.aero" target="_blank" rel="noopener" download>.aero</a>
+      </div>
+    </div>
+    <div id="legend">
+      <h3>Components</h3>
+      <div id="legend-content"></div>
+    </div>
   </div>
 
-  <div id="sidebar">
-    <div style='font-family: Arial, sans-serif; padding: 10px;'><h2 style='margin-top: 0;'>Aircraft Specifications</h2><h3>Performance</h3><table style='width: 100%; border-collapse: collapse;'><tr><td><b>Total Mass:</b></td><td>7.921 kg</td></tr><tr><td><b>Airspeed:</b></td><td>10.98 m/s</td></tr><tr><td><b>Thrust (Cruise):</b></td><td>2.73 N</td></tr><tr><td><b>Power (Cruise):</b></td><td>41.32 W</td></tr><tr><td><b>L/D Ratio:</b></td><td>28.46</td></tr><tr><td><b>Stall Speed:</b></td><td>9.15 m/s</td></tr></table><h3>Main Wing</h3><table style='width: 100%; border-collapse: collapse;'><tr><td><b>Wingspan:</b></td><td>6.038 m</td></tr><tr><td><b>Chord:</b></td><td>0.310 m</td></tr><tr><td><b>Area:</b></td><td>1.528 m²</td></tr><tr><td><b>Aspect Ratio:</b></td><td>24.11</td></tr></table><h3>Geometry</h3><table style='width: 100%; border-collapse: collapse;'><tr><td><b>Boom Length:</b></td><td>1.139 m</td></tr><tr><td><b>Boom Y Position:</b></td><td>0.755 m</td></tr><tr><td><b>CG Location (from LE):</b></td><td>0.077 m</td></tr></table><h3>Mass Properties</h3><table style='width: 100%; border-collapse: collapse;'><tr><td><b>Total Mass:</b></td><td>7.615 kg</td></tr><tr><td><b>CG X:</b></td><td>0.123 m</td></tr><tr><td><b>CG Y:</b></td><td>0.000 m</td></tr><tr><td><b>CG Z:</b></td><td>0.011 m</td></tr><tr><td><b>Ixx:</b></td><td>8.616 kg·m²</td></tr><tr><td><b>Iyy:</b></td><td>0.939 kg·m²</td></tr><tr><td><b>Izz:</b></td><td>9.471 kg·m²</td></tr></table><h3>Aerodynamics</h3><table style='width: 100%; border-collapse: collapse;'><tr><td><b>CL:</b></td><td>0.868</td></tr><tr><td><b>CD:</b></td><td>0.0305</td></tr><tr><td><b>Lift:</b></td><td>77.70 N</td></tr><tr><td><b>Drag:</b></td><td>2.73 N</td></tr><tr><td><b>Static Margin:</b></td><td>0.490</td></tr><tr><td><b>Neutral Point X:</b></td><td>0.206 m</td></tr></table><h3>Mission</h3><table style='width: 100%; border-collapse: collapse;'><tr><td><b>Mission Date:</b></td><td>100</td></tr><tr><td><b>Operating Latitude:</b></td><td>37.3989°</td></tr><tr><td><b>Operating Altitude:</b></td><td>1200 m</td></tr></table><h3>Environment</h3><table style='width: 100%; border-collapse: collapse;'><tr><td><b>Temperature:</b></td><td>106.6 °F</td></tr><tr><td><b>Pressure:</b></td><td>87714 Pa</td></tr><tr><td><b>Density:</b></td><td>0.9712 kg/m³</td></tr></table><h3>Horizontal Stabilizer</h3><table style='width: 100%; border-collapse: collapse;'><tr><td><b>Span:</b></td><td>1.509 m</td></tr><tr><td><b>Chord:</b></td><td>0.125 m</td></tr><tr><td><b>Area:</b></td><td>0.189 m²</td></tr><tr><td><b>Aspect Ratio:</b></td><td>11.00</td></tr><tr><td><b>Angle of Attack:</b></td><td>-0.73°</td></tr><tr><td><b>Volume Coefficient:</b></td><td>0.500</td></tr><tr><td><b>Airfoil:</b></td><td>naca0010</td></tr></table><h3>Vertical Stabilizer</h3><table style='width: 100%; border-collapse: collapse;'><tr><td><b>Span (Height):</b></td><td>0.418 m</td></tr><tr><td><b>Root Chord:</b></td><td>0.293 m</td></tr><tr><td><b>Area (each):</b></td><td>0.087 m²</td></tr><tr><td><b>Total Area:</b></td><td>0.175 m²</td></tr><tr><td><b>Aspect Ratio:</b></td><td>2.00</td></tr><tr><td><b>Volume Coefficient:</b></td><td>0.0200</td></tr><tr><td><b>Airfoil:</b></td><td>naca0010</td></tr></table><h3>Power System</h3><table style='width: 100%; border-collapse: collapse;'><tr><td><b>Solar Panels:</b></td><td>49</td></tr><tr><td><b>Battery Capacity:</b></td><td>728.3 Wh</td></tr><tr><td><b>Panel Size:</b></td><td>125.0 mm</td></tr></table><div style='margin-top: 15px;'><h4 style='margin-bottom: 10px;'>Power Generation & Battery State</h4><div style='position: relative; height: 200px; width: 100%; max-height: 200px; overflow: hidden;'><canvas id='powerChart' style='max-height: 200px;'></canvas></div></div><h3>Propulsion</h3><table style='width: 100%; border-collapse: collapse;'><tr><td><b>Propeller Diameter:</b></td><td>0.400 m</td></tr><tr><td><b>Number of Motors:</b></td><td>2</td></tr></table><div style='margin-top: 20px; padding-top: 15px; border-top: 2px solid #ddd;'><h3 style='margin-top: 0; margin-bottom: 10px; color: #555; font-size: 14px;'>Energy Balance Analysis</h3><img src='analysis/energy_balance_analysis.png' alt='Energy Balance Analysis' class='energy-balance-image' onclick='this.classList.toggle("zoomed");' /><p style='font-size: 11px; color: #777; margin-top: 5px;'>Click image to zoom</p></div><h3>Wing Configuration</h3><table style='width: 100%; border-collapse: collapse;'><tr><td><b>Structural AOA:</b></td><td>5.10°</td></tr><tr><td><b>Mean Aerodynamic Chord:</b></td><td>0.262 m</td></tr><tr><td><b>Airfoil:</b></td><td>s4110</td></tr></table><h3>Structural Details</h3><table style='width: 100%; border-collapse: collapse;'><tr><td><b>Boom Radius:</b></td><td>10.0 mm</td></tr><tr><td><b>Boom Spacing Fraction:</b></td><td>0.25</td></tr></table></div>
+  <div id="content-area">
+    <div id="sidebar">
+      <div style='font-family: Arial, sans-serif; padding: 0; margin-bottom: 40px;'><h2 style='margin-top: 0;'>Aircraft Specifications</h2><div class='tabs-container'><div class='tabs'><button class='tab-button active' data-tab='overview'>Overview</button><button class='tab-button' data-tab='performance'>Performance</button><button class='tab-button' data-tab='aerodynamics'>Aerodynamics</button><button class='tab-button' data-tab='wings'>Wings</button><button class='tab-button' data-tab='geometry'>Geometry</button><button class='tab-button' data-tab='mass'>Mass</button><button class='tab-button' data-tab='power'>Power</button><button class='tab-button' data-tab='propulsion'>Propulsion</button><button class='tab-button' data-tab='structure'>Structure</button><button class='tab-button' data-tab='loads'>Loads</button></div><div class='tab-content active' id='tab-overview'><h3>Meta</h3><table style='width: 100%; border-collapse: collapse;'><tr><td><b>Run ID:</b></td><td>run_e4cj</td></tr><tr><td><b>Timestamp (UTC):</b></td><td>2025-12-18T23:09:51.102630+00:00</td></tr></table><h3>Mission</h3><table style='width: 100%; border-collapse: collapse;'><tr><td><b>Mission Date:</b></td><td>100</td></tr><tr><td><b>Operating Latitude:</b></td><td>37.3989°</td></tr><tr><td><b>Operating Altitude:</b></td><td>1200 m</td></tr></table><h3>Environment</h3><table style='width: 100%; border-collapse: collapse;'><tr><td><b>Temperature (K):</b></td><td>314.61 K</td></tr><tr><td><b>Temperature (F):</b></td><td>106.6 °F</td></tr><tr><td><b>Pressure:</b></td><td>87714 Pa</td></tr><tr><td><b>Density:</b></td><td>0.9712 kg/m³</td></tr><tr><td><b>Speed of Sound:</b></td><td>355.58 m/s</td></tr></table></div><div class='tab-content' id='tab-performance'><h3>Performance</h3><table style='width: 100%; border-collapse: collapse;'><tr><td><b>Total Mass:</b></td><td>7.921 kg</td></tr><tr><td><b>Airspeed:</b></td><td>10.98 m/s</td></tr><tr><td><b>Thrust (Cruise):</b></td><td>2.73 N</td></tr><tr><td><b>Thrust (Climb):</b></td><td>41.58 N</td></tr><tr><td><b>Power (Cruise, All Motors):</b></td><td>41.32 W</td></tr><tr><td><b>Power (Cruise, One Motor):</b></td><td>20.66 W</td></tr><tr><td><b>Power (Shaft Cruise, One Motor):</b></td><td>19.57 W</td></tr><tr><td><b>Power Out Max:</b></td><td>456.69 W</td></tr><tr><td><b>Min Climb Angle:</b></td><td>30.0°</td></tr><tr><td><b>L/D Ratio:</b></td><td>28.46</td></tr><tr><td><b>Stall Speed:</b></td><td>9.15 m/s</td></tr><tr><td><b>Takeoff Gross Weight:</b></td><td>77.70 N</td></tr></table></div><div class='tab-content' id='tab-aerodynamics'><h3>Aerodynamics</h3><table style='width: 100%; border-collapse: collapse;'><tr><td><b>CL:</b></td><td>0.868</td></tr><tr><td><b>CD:</b></td><td>0.0305</td></tr><tr><td><b>Cm:</b></td><td>-0.0000</td></tr><tr><td><b>Lift:</b></td><td>77.70 N</td></tr><tr><td><b>Drag:</b></td><td>2.73 N</td></tr><tr><td><b>Static Margin:</b></td><td>0.490</td></tr><tr><td><b>Neutral Point X:</b></td><td>0.206 m</td></tr></table></div><div class='tab-content' id='tab-wings'><h3>Main Wing</h3><table style='width: 100%; border-collapse: collapse;'><tr><td><b>Wingspan:</b></td><td>6.038 m</td></tr><tr><td><b>Chord:</b></td><td>0.310 m</td></tr><tr><td><b>Area:</b></td><td>1.528 m²</td></tr><tr><td><b>Aspect Ratio:</b></td><td>24.11</td></tr><tr><td><b>Structural AOA:</b></td><td>5.10°</td></tr><tr><td><b>Mean Aerodynamic Chord:</b></td><td>0.262 m</td></tr><tr><td><b>Airfoil:</b></td><td>s4110</td></tr></table><h3>Horizontal Stabilizer</h3><table style='width: 100%; border-collapse: collapse;'><tr><td><b>Span:</b></td><td>1.509 m</td></tr><tr><td><b>Chord:</b></td><td>0.125 m</td></tr><tr><td><b>Area:</b></td><td>0.189 m²</td></tr><tr><td><b>Aspect Ratio:</b></td><td>11.00</td></tr><tr><td><b>Angle of Attack:</b></td><td>-0.73°</td></tr><tr><td><b>Volume Coefficient:</b></td><td>0.500</td></tr><tr><td><b>Airfoil:</b></td><td>naca0010</td></tr></table><h3>Vertical Stabilizer</h3><table style='width: 100%; border-collapse: collapse;'><tr><td><b>Span (Height):</b></td><td>0.418 m</td></tr><tr><td><b>Root Chord:</b></td><td>0.293 m</td></tr><tr><td><b>Area (each):</b></td><td>0.087 m²</td></tr><tr><td><b>Total Area:</b></td><td>0.175 m²</td></tr><tr><td><b>Aspect Ratio:</b></td><td>2.00</td></tr><tr><td><b>Volume Coefficient:</b></td><td>0.0200</td></tr><tr><td><b>Airfoil:</b></td><td>naca0010</td></tr></table></div><div class='tab-content' id='tab-geometry'><h3>Geometry</h3><table style='width: 100%; border-collapse: collapse;'><tr><td><b>Boom Length:</b></td><td>1.139 m</td></tr><tr><td><b>Boom Y Position:</b></td><td>0.755 m</td></tr><tr><td><b>CG Location (from LE):</b></td><td>0.077 m</td></tr></table></div><div class='tab-content' id='tab-mass'><h3>Mass Properties</h3><table style='width: 100%; border-collapse: collapse;'><tr><td><b>Total Mass:</b></td><td>7.615 kg</td></tr><tr><td><b>CG X:</b></td><td>0.123 m</td></tr><tr><td><b>CG Y:</b></td><td>0.000 m</td></tr><tr><td><b>CG Z:</b></td><td>0.011 m</td></tr><tr><td><b>Ixx:</b></td><td>8.616 kg·m²</td></tr><tr><td><b>Iyy:</b></td><td>0.939 kg·m²</td></tr><tr><td><b>Izz:</b></td><td>9.471 kg·m²</td></tr></table><h3>Masses Breakdown</h3><table style='width: 100%; border-collapse: collapse;'><tr><td><b>Solar Cells:</b></td><td>0.392 kg</td></tr><tr><td><b>Power Board:</b></td><td>0.150 kg</td></tr><tr><td><b>Batteries:</b></td><td>3.194 kg</td></tr><tr><td><b>Wires:</b></td><td>0.076 kg</td></tr><tr><td><b>Avionics:</b></td><td>0.340 kg</td></tr><tr><td><b>Servos:</b></td><td>0.080 kg</td></tr><tr><td><b>Motors (Mounted):</b></td><td>0.605 kg</td></tr><tr><td><b>ESCs:</b></td><td>0.000 kg</td></tr><tr><td><b>Propellers:</b></td><td>0.110 kg</td></tr><tr><td><b>Main Wing:</b></td><td>1.860 kg</td></tr><tr><td><b>Horizontal Stabilizer:</b></td><td>0.126 kg</td></tr><tr><td><b>Vertical Stabilizer:</b></td><td>0.112 kg</td></tr><tr><td><b>Boom:</b></td><td>0.205 kg</td></tr><tr><td><b>Fuselages:</b></td><td>0.250 kg</td></tr><tr><td><b>Superstructures:</b></td><td>0.200 kg</td></tr><tr><td><b>Boom-VStab Interfaces:</b></td><td>0.100 kg</td></tr><tr><td><b>VStab-HStab Interfaces:</b></td><td>0.060 kg</td></tr><tr><td><b>Total Mass:</b></td><td>7.921 kg</td></tr></table></div><div class='tab-content' id='tab-power'><h3>Power System</h3><table style='width: 100%; border-collapse: collapse;'><tr><td><b>Solar Panels:</b></td><td>49.0</td></tr><tr><td><b>Solar Panels (Rows):</b></td><td>2</td></tr><tr><td><b>Battery Capacity:</b></td><td>728.3 Wh</td></tr><tr><td><b>Battery Voltage:</b></td><td>22.2 V</td></tr><tr><td><b>Number of Packs:</b></td><td>6.6</td></tr><tr><td><b>Panel Size:</b></td><td>125.0 mm</td></tr><tr><td><b>Solar Encapsulation Efficiency (HIT):</b></td><td>0.100</td></tr><tr><td><b>Solar Cell Efficiency:</b></td><td>0.219</td></tr><tr><td><b>Energy Generation Margin:</b></td><td>1.050</td></tr></table><div style='margin-top: 15px;'><h4 style='margin-bottom: 10px; color: #4CAF50;'>Power Generation & Battery State</h4><div style='position: relative; height: 200px; width: 100%; max-height: 200px; overflow: hidden;'><canvas id='powerChart' style='max-height: 200px;'></canvas></div></div><div style='margin-top: 20px; padding-top: 15px; border-top: 2px solid #444;'><h4 style='margin-bottom: 10px; color: #4CAF50;'>Energy Balance Analysis</h4><div style='position: relative; height: 300px; width: 100%; max-height: 300px; overflow: hidden;'><canvas id='energyBalanceChart' style='max-height: 300px;'></canvas></div></div><div style='margin-top: 20px; padding-top: 15px; border-top: 2px solid #444;'><h4 style='margin-bottom: 10px; color: #4CAF50;'>Sensitivity Analysis (48h)</h4><div style='color:#aaa; font-size:12px; margin-bottom:10px;'>Select a delta for each variable to re-run the 48-hour energy balance in-browser (based on the embedded baseline time series).</div><div id='sensGrid' style='display:grid; grid-template-columns: 1fr; gap: 18px;'><div style='border:1px solid #333; border-radius:10px; padding:12px; background:rgba(0,0,0,0.12);'>  <div style='display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;'>    <div style='font-weight:600; color:#e0e0e0;'>Weight</div>    <select id='sensSel_weight' style='padding:6px 8px; background:#222; color:#e0e0e0; border:1px solid #444; border-radius:6px;'></select>  </div>  <div style='position:relative; height:320px; width:100%; margin-top:10px; overflow:hidden;'><canvas id='sensChart_weight'></canvas></div></div><div style='border:1px solid #333; border-radius:10px; padding:12px; background:rgba(0,0,0,0.12);'>  <div style='display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;'>    <div style='font-weight:600; color:#e0e0e0;'>Drag</div>    <select id='sensSel_drag' style='padding:6px 8px; background:#222; color:#e0e0e0; border:1px solid #444; border-radius:6px;'></select>  </div>  <div style='position:relative; height:320px; width:100%; margin-top:10px; overflow:hidden;'><canvas id='sensChart_drag'></canvas></div></div><div style='border:1px solid #333; border-radius:10px; padding:12px; background:rgba(0,0,0,0.12);'>  <div style='display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;'>    <div style='font-weight:600; color:#e0e0e0;'>Solar (Irradiance)</div>    <select id='sensSel_solar' style='padding:6px 8px; background:#222; color:#e0e0e0; border:1px solid #444; border-radius:6px;'></select>  </div>  <div style='position:relative; height:320px; width:100%; margin-top:10px; overflow:hidden;'><canvas id='sensChart_solar'></canvas></div></div><div style='border:1px solid #333; border-radius:10px; padding:12px; background:rgba(0,0,0,0.12);'>  <div style='display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;'>    <div style='font-weight:600; color:#e0e0e0;'>Solar Cell Efficiency</div>    <select id='sensSel_cellEff' style='padding:6px 8px; background:#222; color:#e0e0e0; border:1px solid #444; border-radius:6px;'></select>  </div>  <div style='position:relative; height:320px; width:100%; margin-top:10px; overflow:hidden;'><canvas id='sensChart_cellEff'></canvas></div></div><div style='border:1px solid #333; border-radius:10px; padding:12px; background:rgba(0,0,0,0.12);'>  <div style='display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;'>    <div style='font-weight:600; color:#e0e0e0;'>Solar Power (Panel/Area Proxy)</div>    <select id='sensSel_solarPower' style='padding:6px 8px; background:#222; color:#e0e0e0; border:1px solid #444; border-radius:6px;'></select>  </div>  <div style='position:relative; height:320px; width:100%; margin-top:10px; overflow:hidden;'><canvas id='sensChart_solarPower'></canvas></div></div><div style='border:1px solid #333; border-radius:10px; padding:12px; background:rgba(0,0,0,0.12);'>  <div style='display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;'>    <div style='font-weight:600; color:#e0e0e0;'>Motor Efficiency</div>    <select id='sensSel_motorEff' style='padding:6px 8px; background:#222; color:#e0e0e0; border:1px solid #444; border-radius:6px;'></select>  </div>  <div style='position:relative; height:320px; width:100%; margin-top:10px; overflow:hidden;'><canvas id='sensChart_motorEff'></canvas></div></div><div style='border:1px solid #333; border-radius:10px; padding:12px; background:rgba(0,0,0,0.12);'>  <div style='display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;'>    <div style='font-weight:600; color:#e0e0e0;'>Center of Gravity Shift</div>    <select id='sensSel_cg' style='padding:6px 8px; background:#222; color:#e0e0e0; border:1px solid #444; border-radius:6px;'></select>  </div>  <div style='position:relative; height:320px; width:100%; margin-top:10px; overflow:hidden;'><canvas id='sensChart_cg'></canvas></div>  <div style='color:#888; font-size:11px; margin-top:6px;'>CG shift is modeled as an electrical power penalty proportional to |shift| (edit the coefficient in JS).</div></div></div></div></div><div class='tab-content' id='tab-propulsion'><h3>Propulsion</h3><table style='width: 100%; border-collapse: collapse;'><tr><td><b>Propeller Diameter:</b></td><td>0.400 m</td></tr><tr><td><b>Number of Motors:</b></td><td>2</td></tr><tr><td><b>Advanced Ratio:</b></td><td>0.800</td></tr><tr><td><b>Motor KV:</b></td><td>92.76 rpm/V</td></tr><tr><td><b>RPM (Cruise):</b></td><td>2059.3 rpm</td></tr><tr><td><b>Current (Cruise):</b></td><td>0.882 A</td></tr></table></div><div class='tab-content' id='tab-structure'><h3>Structural Details</h3><table style='width: 100%; border-collapse: collapse;'><tr><td><b>Boom Radius:</b></td><td>10.0 mm</td></tr><tr><td><b>Boom Spacing Fraction:</b></td><td>0.25</td></tr></table></div><div class='tab-content' id='tab-loads'><div style='margin-top: 10px;'><h3 style='margin-bottom: 8px;'>XFLR Loads</h3><div style='display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px;'>  <label style='display:flex; flex-direction:column; gap:4px;'>    <span style='color:#aaa; font-size:12px;'>Case</span>    <select id='xflrCaseSelect' style='padding:6px 8px; background:#222; color:#e0e0e0; border:1px solid #444; border-radius:6px; min-width: 220px;'></select>  </label>  <label style='display:flex; flex-direction:column; gap:4px;'>    <span style='color:#aaa; font-size:12px;'>Surface</span>    <select id='xflrSurfaceSelect' style='padding:6px 8px; background:#222; color:#e0e0e0; border:1px solid #444; border-radius:6px; min-width: 220px;'></select>  </label>  <div style='flex:1; min-width: 200px;'></div>  <button id='xflrCopyCsvBtn' style='padding:8px 10px; background:#2e7d32; color:white; border:none; border-radius:6px; cursor:pointer;'>Copy CSV</button>  <button id='xflrDownloadCsvBtn' style='padding:8px 10px; background:#1565c0; color:white; border:none; border-radius:6px; cursor:pointer;'>Download CSV</button></div><div id='xflrLoadsMessage' style='margin: 6px 0 12px 0; color:#aaa; font-size: 13px;'></div><div style='display: grid; grid-template-columns: 1fr; gap: 12px;'>  <div style='position: relative; height: 220px; width: 100%; max-height: 220px; overflow: hidden; background: rgba(0,0,0,0.12); border:1px solid #333; border-radius: 8px; padding: 8px;'>    <canvas id='xflrLiftChart' style='max-height: 200px;'></canvas>  </div>  <div style='position: relative; height: 220px; width: 100%; max-height: 220px; overflow: hidden; background: rgba(0,0,0,0.12); border:1px solid #333; border-radius: 8px; padding: 8px;'>    <canvas id='xflrMomentChart' style='max-height: 200px;'></canvas>  </div>  <div style='position: relative; height: 220px; width: 100%; max-height: 220px; overflow: hidden; background: rgba(0,0,0,0.12); border:1px solid #333; border-radius: 8px; padding: 8px;'>    <canvas id='xflrBendingChart' style='max-height: 200px;'></canvas>  </div></div><div style='margin-top: 14px;'>  <h4 style='margin: 0 0 8px 0; color:#4CAF50;'>Per-station values</h4>  <div style='overflow-x:auto; border:1px solid #333; border-radius: 8px;'>    <table id='xflrLoadsTable' style='width:100%; border-collapse: collapse; font-size: 12px;'>      <thead style='background: rgba(255,255,255,0.06);'>        <tr>          <th style='text-align:left; padding:8px; border-bottom:1px solid #333;'>y (m)</th>          <th style='text-align:left; padding:8px; border-bottom:1px solid #333;'>chord (m)</th>          <th style='text-align:left; padding:8px; border-bottom:1px solid #333;'>Cl</th>          <th style='text-align:left; padding:8px; border-bottom:1px solid #333;'>CmGeom</th>          <th style='text-align:left; padding:8px; border-bottom:1px solid #333;'>CmAirf@c/4</th>          <th style='text-align:left; padding:8px; border-bottom:1px solid #333;'>L' (N/m)</th>          <th style='text-align:left; padding:8px; border-bottom:1px solid #333;'>M' CmGeom (N·m/m)</th>          <th style='text-align:left; padding:8px; border-bottom:1px solid #333;'>M' CmAirf (N·m/m)</th>          <th style='text-align:left; padding:8px; border-bottom:1px solid #333;'>BM</th>        </tr>      </thead>      <tbody></tbody>    </table>  </div>  <div style='margin-top: 10px; color:#888; font-size: 12px;'>Tip: After clicking <b>Copy CSV</b>, paste directly into Google Sheets (cell A1).</div>  <textarea id='xflrCsvFallback' readonly style='width:100%; margin-top:10px; height:120px; background:#111; color:#ddd; border:1px solid #333; border-radius:8px; padding:8px; display:none;'></textarea></div></div></div></div></div>
+    </div>
   </div>
 
   <div id="info">
@@ -126,27 +223,33 @@
 
     const soln = {"Meta":{"run_id":"run_e4cj","timestamp_utc":"2025-12-18T23:09:51.102630+00:00"},"Mission":{"mission_date":100,"operating_lat":37.398928,"operating_altitude":1200},"Environment":{"temperature_K":314.6118954753899,"temperature_F":106.63141185570174,"pressure":87713.68566656993,"density":0.9712477412534749,"speed_of_sound":355.57620215400374},"Performance":{"airspeed":10.982847006396227,"thrust_cruise":2.7298589749554663,"thrust_climb":41.58215667244738,"power_cruise (all motors)":41.31608810265753,"power_cruise (one motor)":20.658044051328766,"power_shaft_cruise (one motor)":19.570248658315812,"min_climb_angle":30,"power_out_max":456.6904649510281,"total_mass":7.92095774648298,"togw":77.70459539498384,"stall_speed":9.15237251350197,"L_over_D":28.464692168334906},"Aerodynamics":{"CL":0.8680555569949491,"CD":0.03049587017704002,"Cm":-1.7751305133363728e-15,"L":77.70459538507362,"D":2.7298589749554663,"x_np":0.2060175162576757,"static_margin":0.49012218966792254},"Main Wing":{"wingspan":6.037513145960718,"chordlen":0.30999999000116885,"struct_defined_aoa":5.102887526041998,"S_w":1.5281616194358167,"MAC_w":0.26221526277857216,"b_w":6.069347591841858,"main_wing_area":1.5281616194358167,"main_wing_AR":24.10542165310789,"wing_airfoil":"s4110"},"HStab":{"hstab_AR":11.00000009,"hstab_aoa":-0.7335271591221816,"hstab_area":0.18867227072049528,"hstab_span":1.5093782864901795,"hstab_chordlen":0.12499999000199136,"L_H":1.0619136004413463,"V_H_actual":0.5,"hstab_airfoil":"naca0010"},"V Stab":{"vstab_AR":2.0,"vstab_area":0.0873417954249115,"vstab_area_total":0.174683590849823,"vstab_span":0.4179516609009025,"vstab_root_chord":0.2929516708989111,"L_V":1.0619136004413463,"V_V_actual":0.02,"vstab_airfoil":"naca0010"},"Geometry":{"cg_le_dist":0.07749999750029221,"boom_y":0.7546891432450897,"boom_length":1.1394135979416384,"boom_radius":0.01,"boom_spacing_frac":0.25},"Power":{"solar_panels_n":49.038632894133336,"battery_capacity":728.3305557623768,"battery_states":[412.24038324340773,425.45860599939004,438.66495329720107,451.8356942047553,464.9471577340083,477.97577277463074,490.89810798442574,503.69091161972113,516.3311512894799,528.7960536174747,541.063143797551,553.1102850276726,564.915717809064,576.4580990971842,587.716541291382,598.6706510496555,609.3005679137087,619.5870027270589,629.511275824775,639.0553549667599,648.201892976303,656.934265030442,665.2366055264946,673.0938444170349,680.4917428595778,687.4169279614882,693.8569263068794,699.8001958185489,705.2361553169354,710.1552108642289,714.5487775875894,718.4092951050719,721.7302338477414,724.5060883555004,726.7323518200392,728.291839075114,728.3305536923785,728.3301844067313,728.2610551936797,727.7000580019235,726.5765772559636,724.887342936845,722.6268668272604,719.7856529973894,716.348254741827,712.2918476002386,707.5886716270903,702.2225715132128,696.2401117736418,689.831695938021,683.2437450296725,676.6315320997073,670.0193191697421,663.4071062397768,656.7948933098115,650.1826803798463,643.570467449881,636.9582545199157,630.3460415899506,623.7338286599853,617.1216157300199,610.5094028000548,603.8971898700896,597.2849769401242,590.6727640101591,584.0605510801938,577.4483381502286,570.8361252202633,564.2239122902981,557.6116993603329,550.9994864303676,544.3872735004023,537.7750605704371,531.1628476404718,524.5506347105065,517.9384217805414,511.32620885057605,504.7139959206108,498.1017829906456,491.4895700606803,484.87735713071515,478.2651442007498,471.6529312707845,465.0407183408193,458.42850541085403,451.81629248088876,445.20407955092355,438.5918666209583,431.979653690993,425.3674407610278,418.75522783106254,412.1430149010973,405.53080197113206,398.9185890411668,392.30637611120153,385.69416318123626,379.081950251271,372.4697373213058,365.8575243913405,359.24531146137525,352.63309853141004,346.02088560144483,339.40867267147956,332.79645974151435,326.18424681154903,319.5720338815838,312.9598209516186,306.3476080216533,299.7353950916881,293.1231821617228,286.5109692317576,279.8987563017924,273.2865433718271,266.67433044186185,260.06211751189664,253.44990458193132,246.83769165196608,240.2254787220008,233.61326579203552,227.00105286207025,220.38883993210493,213.77662700213963,207.1644140721744,200.55220114220907,193.93998821224383,187.32777528227857,180.7155623523133,174.10334942234803,167.4911364923827,160.87892356241744,154.26671063245217,147.6787597241037,141.27034388848273,135.28788414891184,129.92178403503425,125.21860806188592,121.16220092029756,117.72480266473518,114.88358883486414,112.62311272527955,110.93387840616089,109.81039766261406,109.24958335670105,109.24958335582828,109.80897621537342,110.92622963386303,112.59934138347438,114.82560485947056,117.60145936722975,120.92239810989905,124.7829156273816,129.17648235074208,134.09553789803562,139.53149739642197,145.47476690809157,151.91476525348276,158.8399503553931,166.23784879793612,174.09508768847647,182.39742818452905,191.1298002386681,200.27633824821118,209.82041739019607,219.74469048791198,230.03112530126236,240.6610421653157,251.6151519235891,262.8735941177867,274.41597540590686,286.22140818729827,298.2685494174199,310.53563959749613,323.00054192549106,335.64078159524973,348.4335852305452,361.35592044034007,374.38453548096265,387.49599901021566,400.6667399177698,413.87308721558077],"battery_voltage":22.2,"solar_panel_side_length":0.125,"solar_panels_n_rows":2,"solar_encapsulation_eff_hit":0.1,"solar_cell_efficiency":0.2187,"energy_generation_margin":1.05,"num_packs":6.561536538399791},"Propulsion":{"propeller_n":2,"propeller_diameter":0.4,"advanced_ratio":0.8,"motor_kv":92.76053216782081,"rpm_cruise":2059.283813699292,"i_cruise":0.8815427325390726},"Masses":{"mass_solar_cells":0.3923090631530667,"mass_power_board":0.15,"mass_batteries":3.1944322621156878,"mass_wires":0.07602406965106699,"mass_avionics":0.33999999999999997,"mass_servos":0.08,"mass_motors_mounted":0.6050000000000001,"mass_esc":0.06,"mass_propellers":0.11,"mass_main_wing":1.8601172389604779,"mass_hstab":0.12633193372304105,"mass_vstab":0.1116487312501445,"mass_boom":0.2050944476294949,"mass_fuselages":0.25,"mass_superstructures":0.2,"mass_boom_vstab_interfaces":0.1,"mass_vstab_stab_interfaces":0.06,"total_mass":7.92095774648298}};
     const massProperties = {"components":{"Main wing":{"mass":1.8601172389604779,"x_cg":0.07749999750029221,"y_cg":0.0,"z_cg":0.0,"Ixx":5.650563210423919,"Iyy":0.008593755040505668,"Izz":5.658727948052106,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"Horizontal stabilizer":{"mass":0.12633193372304105,"x_cg":1.243901513166864,"y_cg":0.0,"z_cg":0.4179516609009025,"Ixx":0.023986002718252693,"Iyy":0.00016613962584517865,"Izz":0.02414885245051678,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"Vertical stabilizer L":{"mass":0.05582436562507225,"x_cg":1.2126515156663662,"y_cg":0.7546891432450897,"z_cg":0.20897583045045126,"Ixx":0.0008133602666695527,"Iyy":0.0010157917337813589,"Izz":0.00020388522640073722,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"Vertical stabilizer R":{"mass":0.05582436562507225,"x_cg":1.2126515156663662,"y_cg":-0.7546891432450897,"z_cg":0.20897583045045126,"Ixx":0.0008133602666695527,"Iyy":0.0010157917337813589,"Izz":0.00020388522640073722,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"Boom L":{"mass":0.10254722381474746,"x_cg":0.5697067989708192,"y_cg":0.7546891432450897,"z_cg":-0.02,"Ixx":5.127361190737373e-06,"Iyy":0.011097005516692628,"Izz":0.011097005516692628,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"Boom R":{"mass":0.10254722381474746,"x_cg":0.5697067989708192,"y_cg":-0.7546891432450897,"z_cg":-0.02,"Ixx":5.127361190737373e-06,"Iyy":0.011097005516692628,"Izz":0.011097005516692628,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"Fuselage L":{"mass":0.125,"x_cg":-0.25,"y_cg":0.7546891432450897,"z_cg":-0.02,"Ixx":8.794701528334989e-05,"Iyy":0.0026481401743083414,"Izz":0.0026481401743083414,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"Fuselage R":{"mass":0.125,"x_cg":-0.25,"y_cg":-0.7546891432450897,"z_cg":-0.02,"Ixx":8.794701528334989e-05,"Iyy":0.0026481401743083414,"Izz":0.0026481401743083414,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"Solar cells":{"mass":0.3923090631530667,"x_cg":0.15499999500058442,"y_cg":0.0,"z_cg":0.001,"Ixx":1.1916900733336462,"Iyy":0.0005266905421440228,"Izz":1.1922165023364149,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"Batteries":{"mass":3.1944322621156878,"x_cg":0.15499999500058442,"y_cg":0.0,"z_cg":0.0,"Ixx":0.6067086199256532,"Iyy":0.010887689960044303,"Izz":0.61711714504638,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"FC":{"mass":0.08,"x_cg":0.17979999420067794,"y_cg":0.0,"z_cg":0.0,"Ixx":0.0,"Iyy":0.0,"Izz":0.0,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"GPS":{"mass":0.02,"x_cg":0.17979999420067794,"y_cg":0.0,"z_cg":0.0,"Ixx":0.0,"Iyy":0.0,"Izz":0.0,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"Telemetry":{"mass":0.03,"x_cg":0.17979999420067794,"y_cg":0.0,"z_cg":0.0,"Ixx":0.0,"Iyy":0.0,"Izz":0.0,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"Receiver":{"mass":0.02,"x_cg":0.17979999420067794,"y_cg":0.0,"z_cg":0.0,"Ixx":0.0,"Iyy":0.0,"Izz":0.0,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"Navlight Port":{"mass":0.01,"x_cg":0.17979999420067794,"y_cg":-1.5093782864901795,"z_cg":0.0,"Ixx":0.0,"Iyy":0.0,"Izz":0.0,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"Navlight Starboard":{"mass":0.01,"x_cg":0.17979999420067794,"y_cg":1.5093782864901795,"z_cg":0.0,"Ixx":0.0,"Iyy":0.0,"Izz":0.0,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"Navlight Center":{"mass":0.01,"x_cg":0.17979999420067794,"y_cg":0.0,"z_cg":0.0,"Ixx":0.0,"Iyy":0.0,"Izz":0.0,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"Navlight Hstab":{"mass":0.01,"x_cg":1.2851515098675212,"y_cg":0.0,"z_cg":0.4179516609009025,"Ixx":0.0,"Iyy":0.0,"Izz":0.0,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"Motor L":{"mass":0.30250000000000005,"x_cg":-0.5,"y_cg":0.7546891432450897,"z_cg":-0.02,"Ixx":0.0,"Iyy":0.0,"Izz":0.0,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"Motor R":{"mass":0.30250000000000005,"x_cg":-0.5,"y_cg":-0.7546891432450897,"z_cg":-0.02,"Ixx":0.0,"Iyy":0.0,"Izz":0.0,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"ESC L":{"mass":0.03,"x_cg":-0.25,"y_cg":0.7546891432450897,"z_cg":-0.01,"Ixx":0.0,"Iyy":0.0,"Izz":0.0,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"ESC R":{"mass":0.03,"x_cg":-0.25,"y_cg":-0.7546891432450897,"z_cg":-0.01,"Ixx":0.0,"Iyy":0.0,"Izz":0.0,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"Prop L":{"mass":0.055,"x_cg":-0.5,"y_cg":0.7546891432450897,"z_cg":0.0,"Ixx":0.0011000000000000003,"Iyy":0.0005500000000000001,"Izz":0.0005500000000000001,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"Prop R":{"mass":0.055,"x_cg":-0.5,"y_cg":-0.7546891432450897,"z_cg":0.0,"Ixx":0.0011000000000000003,"Iyy":0.0005500000000000001,"Izz":0.0005500000000000001,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"Superstructure L":{"mass":0.1,"x_cg":0.07749999750029221,"y_cg":0.7546891432450897,"z_cg":0.0,"Ixx":0.0,"Iyy":0.0,"Izz":0.0,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"Superstructure R":{"mass":0.1,"x_cg":0.07749999750029221,"y_cg":-0.7546891432450897,"z_cg":0.0,"Ixx":0.0,"Iyy":0.0,"Izz":0.0,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"Power board L":{"mass":0.075,"x_cg":0.07749999750029221,"y_cg":0.7546891432450897,"z_cg":0.0,"Ixx":0.0,"Iyy":0.0,"Izz":0.0,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"Power board R":{"mass":0.075,"x_cg":0.07749999750029221,"y_cg":-0.7546891432450897,"z_cg":0.0,"Ixx":0.0,"Iyy":0.0,"Izz":0.0,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"Boom_vstab interface L":{"mass":0.05,"x_cg":1.1394135979416384,"y_cg":0.7546891432450897,"z_cg":-0.02,"Ixx":0.0,"Iyy":0.0,"Izz":0.0,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"Boom_vstab interface R":{"mass":0.05,"x_cg":1.1394135979416384,"y_cg":-0.7546891432450897,"z_cg":-0.02,"Ixx":0.0,"Iyy":0.0,"Izz":0.0,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"Vstab_hstab interface L":{"mass":0.03,"x_cg":1.2126515156663662,"y_cg":0.7546891432450897,"z_cg":0.4179516609009025,"Ixx":0.0,"Iyy":0.0,"Izz":0.0,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0},"Vstab_hstab interface R":{"mass":0.03,"x_cg":1.2126515156663662,"y_cg":-0.7546891432450897,"z_cg":0.4179516609009025,"Ixx":0.0,"Iyy":0.0,"Izz":0.0,"Ixy":0.0,"Iyz":0.0,"Ixz":0.0}},"total":{"mass":7.614933676831912,"x_cg":0.1225912345824854,"y_cg":0.0,"z_cg":0.01076563076040325,"Ixx":8.615955755691765,"Iyy":0.9392988465514572,"Izz":9.471186914511371,"Ixy":-6.938893903907228e-18,"Iyz":1.734723475976807e-18,"Ixz":-0.12259847088904287},"total_mass_verification":{"calculated":7.614933676831912,"expected":7.92095774648298,"difference":-0.3060240696510679}};
-    const airplaneGeometry = {};
+    const airplaneGeometry = {"wings":[{"name":"Main Wing","symmetric":true,"xsecs":[{"xyz_le":[0.0,0.0,0.0],"chord":0.30999999000116885},{"xyz_le":[0.0,0.7546891432450897,0.0],"chord":0.30999999000116885},{"xyz_le":[0.0,3.018756572980359,0.2621007888590536],"chord":0.15499999500058442}]},{"name":"Horizontal Stabilizer","symmetric":true,"xsecs":[{"xyz_le":[1.2126515156663662,0.0,0.4179516609009025],"chord":0.12499999000199136},{"xyz_le":[1.2126515156663662,0.7546891432450897,0.4179516609009025],"chord":0.12499999000199136}]},{"name":"Vertical Stabilizer L","symmetric":false,"xsecs":[{"xyz_le":[1.1394135979416384,0.7546891432450897,0.0],"chord":0.2929516708989111},{"xyz_le":[1.2126515156663662,0.7546891432450897,0.4179516609009025],"chord":0.12499999000199136}]},{"name":"Vertical Stabilizer R","symmetric":false,"xsecs":[{"xyz_le":[1.1394135979416384,-0.7546891432450897,0.0],"chord":0.2929516708989111},{"xyz_le":[1.2126515156663662,-0.7546891432450897,0.4179516609009025],"chord":0.12499999000199136}]}],"fuselages":[{"name":"Left Fuse","xsecs":[{"xyz_c":[-0.5,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.4985344892885899,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.49415513892752166,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.4869132927957006,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.4768938549177392,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.4642142940418973,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.4490232664264109,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.4314988729807827,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.4118465711954569,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.39029676634059557,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.36710211017494754,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.34253453883497853,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.31688208463230516,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.2904454991381911,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.2635347271463544,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.2364652728536456,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.20955450086180877,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.18311791536769473,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.15746546116502136,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.13289788982505246,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.10970323365940438,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.08815342880454308,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.06850112701921729,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.050976733573589006,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.035785705958102654,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.02310614508226072,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.013086707204299386,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.005844861072478336,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.0014655107114101007,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.0,0.7546891432450897,-0.02],"radius":0.0}]},{"name":"Right Fuselage","xsecs":[{"xyz_c":[-0.5,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.4985344892885899,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.49415513892752166,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.4869132927957006,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.4768938549177392,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.4642142940418973,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.4490232664264109,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.4314988729807827,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.4118465711954569,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.39029676634059557,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.36710211017494754,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.34253453883497853,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.31688208463230516,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.2904454991381911,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.2635347271463544,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.2364652728536456,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.20955450086180877,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.18311791536769473,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.15746546116502136,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.13289788982505246,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.10970323365940438,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.08815342880454308,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.06850112701921729,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.050976733573589006,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.035785705958102654,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.02310614508226072,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.013086707204299386,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.005844861072478336,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[-0.0014655107114101007,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.0,-0.7546891432450897,-0.02],"radius":0.0}]},{"name":"Boom L","xsecs":[{"xyz_c":[0.0,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.00777005818056927,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.03086828579014103,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.06866462339211174,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.1201280854243982,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.1838548827979927,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.25810671460390605,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.34085818443055216,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.4298520478980424,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.5226607844006714,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.6167528135409671,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.7095615500435961,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.7985554135110863,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.8813068833377324,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.9555587151436458,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[1.0192855125172404,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[1.0707489745495267,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[1.1085453121514974,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[1.1316435397610691,0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[1.1394135979416384,0.7546891432450897,-0.02],"radius":0.0}]},{"name":"Boom R","xsecs":[{"xyz_c":[0.0,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.00777005818056927,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.03086828579014103,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.06866462339211174,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.1201280854243982,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.1838548827979927,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.25810671460390605,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.34085818443055216,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.4298520478980424,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.5226607844006714,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.6167528135409671,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.7095615500435961,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.7985554135110863,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.8813068833377324,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[0.9555587151436458,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[1.0192855125172404,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[1.0707489745495267,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[1.1085453121514974,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[1.1316435397610691,-0.7546891432450897,-0.02],"radius":0.0},{"xyz_c":[1.1394135979416384,-0.7546891432450897,-0.02],"radius":0.0}]}],"xyz_ref":[0.07749999750029221,0.0,0.0]};
+    const energyBalanceData = {"source_csv":"energy_balance_data.csv","time_hr":[0.0,0.1340782122905028,0.2681564245810056,0.4022346368715084,0.5363128491620112,0.670391061452514,0.8044692737430168,0.9385474860335196,1.0726256983240223,1.2067039106145252,1.340782122905028,1.4748603351955307,1.6089385474860336,1.7430167597765363,1.8770949720670391,2.011173184357542,2.1452513966480447,2.2793296089385477,2.4134078212290504,2.547486033519553,2.681564245810056,2.815642458100559,2.9497206703910615,3.083798882681564,3.217877094972067,3.35195530726257,3.4860335195530725,3.6201117318435756,3.7541899441340782,3.888268156424581,4.022346368715084,4.156424581005587,4.290502793296089,4.424581005586592,4.5586592178770955,4.692737430167598,4.826815642458101,4.960893854748603,5.094972067039106,5.229050279329608,5.363128491620112,5.497206703910615,5.631284916201118,5.765363128491621,5.899441340782123,6.033519553072626,6.167597765363128,6.301675977653632,6.435754189944134,6.5698324022346375,6.70391061452514,6.837988826815643,6.972067039106145,7.106145251396648,7.240223463687151,7.374301675977654,7.5083798882681565,7.64245810055866,7.776536312849162,7.910614525139665,8.044692737430168,8.178770949720672,8.312849162011174,8.446927374301676,8.581005586592179,8.715083798882683,8.849162011173185,8.983240223463687,9.117318435754191,9.251396648044693,9.385474860335195,9.5195530726257,9.653631284916202,9.787709497206704,9.921787709497206,10.05586592178771,10.189944134078212,10.324022346368714,10.458100558659217,10.592178770949722,10.726256983240225,10.860335195530727,10.99441340782123,11.128491620111733,11.262569832402235,11.396648044692737,11.530726256983241,11.664804469273744,11.798882681564246,11.932960893854748,12.067039106145252,12.201117318435754,12.335195530726256,12.469273743016762,12.603351955307264,12.737430167597767,12.871508379888269,13.005586592178773,13.139664804469275,13.273743016759777,13.40782122905028,13.541899441340783,13.675977653631286,13.810055865921788,13.94413407821229,14.078212290502794,14.212290502793296,14.3463687150838,14.480446927374302,14.614525139664806,14.748603351955309,14.88268156424581,15.016759776536313,15.150837988826817,15.28491620111732,15.418994413407821,15.553072625698324,15.687150837988828,15.82122905027933,15.955307262569832,16.089385474860336,16.22346368715084,16.357541899441344,16.491620111731844,16.62569832402235,16.75977653631285,16.893854748603353,17.027932960893857,17.162011173184357,17.29608938547486,17.430167597765365,17.564245810055866,17.69832402234637,17.83240223463687,17.966480446927374,18.100558659217878,18.234636871508382,18.368715083798886,18.502793296089386,18.63687150837989,18.77094972067039,18.905027932960895,19.0391061452514,19.1731843575419,19.307262569832403,19.441340782122907,19.575418994413408,19.70949720670391,19.843575418994412,19.977653631284916,20.11173184357542,20.24581005586592,20.379888268156424,20.51396648044693,20.64804469273743,20.782122905027933,20.916201117318433,21.05027932960894,21.184357541899445,21.318435754189945,21.45251396648045,21.586592178770953,21.720670391061454,21.854748603351958,21.98882681564246,22.122905027932962,22.256983240223466,22.391061452513966,22.52513966480447,22.659217877094974,22.793296089385475,22.92737430167598,23.061452513966483,23.195530726256983,23.329608938547487,23.463687150837988,23.59776536312849,23.731843575418996,23.865921787709496,24.0],"solar_flux_W_per_m2":[926.7363136304448,926.1813375067412,924.5173430604807,921.7471316582438,917.8753708881245,912.9085925382059,906.8551897914614,899.7254136607969,891.5313686926866,882.2870079707745,872.008127451158,860.712359657801,848.4191667582679,835.1498330247767,820.9274566608303,805.7769409357709,789.7249845134407,772.8000707798006,755.0324558580387,736.4541548347906,717.0989254883011,697.0022484814408,676.2013025205948,654.7349323298466,632.643606368095,609.9693599077636,586.7557172260117,563.0475839795441,538.8910969651815,514.3334128447641,489.4224091803821,464.2062589856591,438.73282196800255,413.0487686851306,387.1983133594621,361.2213701978152,335.1508568665133,309.00873444697197,282.80018361556,256.5050770190945,230.0656991177703,203.36984031406195,176.2302079525913,148.36870426910974,119.44054443313107,89.2150782747815,58.234625594589005,29.43027371691439,9.524055393046359,1.1338377446904133,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.1338377446904464,9.524055393046359,29.43027371691481,58.234625594589005,89.21507827478132,119.44054443313131,148.3687042691099,176.2302079525913,203.36984031406269,230.06569911777058,256.50507701909464,282.8001836155593,309.00873444697174,335.15085686651304,361.2213701978153,387.1983133594619,413.048768685131,438.7328219680023,464.2062589856593,489.42240918038203,514.3334128447639,538.8910969651812,563.0475839795441,586.7557172260109,609.9693599077635,632.6436063680947,654.7349323298466,676.2013025205952,697.0022484814408,717.0989254883016,736.4541548347904,755.032455858039,772.8000707798009,789.7249845134412,805.7769409357711,820.9274566608307,835.1498330247765,848.4191667582679,860.7123596578008,872.008127451158,882.2870079707745,891.5313686926868,899.7254136607967,906.8551897914614,912.9085925382059,917.8753708881245,921.7471316582438,924.5173430604806,926.1813375067412,926.7363136304448],"period_type":["day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","dawn_dusk","dawn_dusk","dawn_dusk","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","night","dawn_dusk","dawn_dusk","dawn_dusk","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day","day"],"power_generated_W":[147.9019994910261,147.8134283654985,147.54786403816598,147.1057535916695,146.4878419473008,145.69517154237843,144.72908188256932,143.59120897294127,142.28348463228681,140.80813569572587,139.16768311064794,137.36494093053517,135.40301520988743,133.2853028010483,131.01549004978014,128.5975513803885,126.0357477522292,123.33462495645549,120.49901170329542,117.5340174238328,114.44502967311135,111.23771096904981,107.91799482793749,104.49208065329096,100.96642698773921,97.3477424287001,93.64297321052693,89.85928602812254,86.00404405955545,82.08477324772112,78.109114587215,74.08475622506629,70.01933630636165,65.9203031944622,61.79471323517585,57.648936515559356,53.488226513431805,49.31608809614823,45.133348071056496,40.9367942237042,36.717215472564355,32.45670378533909,28.125368288202697,23.678826113254804,19.062051504977838,14.238233969593214,9.29392475332052,4.696909211691469,1.5199866619843774,0.18095424455869577,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.18095424455870104,1.5199866619843774,4.696909211691537,9.29392475332052,14.238233969593182,19.062051504977873,23.678826113254832,28.125368288202697,32.4567037853392,36.717215472564405,40.93679422370423,45.13334807105639,49.31608809614819,53.48822651343177,57.64893651555937,61.79471323517582,65.92030319446228,70.01933630636162,74.08475622506633,78.109114587215,82.08477324772109,86.0040440595554,89.85928602812254,93.64297321052682,97.34774242870009,100.96642698773917,104.49208065329096,107.91799482793755,111.23771096904981,114.44502967311142,117.53401742383274,120.49901170329548,123.33462495645551,126.03574775222926,128.59755138038852,131.01549004978023,133.28530280104823,135.40301520988743,137.3649409305351,139.16768311064794,140.80813569572587,142.28348463228684,143.59120897294122,144.72908188256932,145.69517154237843,146.4878419473008,147.1057535916695,147.54786403816595,147.8134283654985,147.9019994910261],"power_used_W":[50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165,50.33482636637165],"battery_state_Wh":[728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.3305557623768,728.1939651563133,727.4965602452096,726.2364888964721,724.4106639721628,722.0135972573875,719.0357928223257,715.4618039615726,711.2688062147936,706.4290396364546,700.9263489173863,694.8072985726247,688.2622921318131,681.5377506182739,674.7889470831179,668.040143547962,661.291340012806,654.5425364776501,647.7937329424941,641.0449294073381,634.2961258721822,627.5473223370262,620.7985188018703,614.0497152667143,607.3009117315584,600.5521081964024,593.8033046612464,587.0545011260905,580.3056975909345,573.5568940557786,566.8080905206226,560.0592869854667,553.3104834503107,546.5616799151547,539.8128763799988,533.0640728448428,526.3152693096869,519.5664657745309,512.817662239375,506.068858704219,499.32005516906304,492.5712516339071,485.8224480987511,479.07364456359517,472.3248410284392,465.57603749328325,458.8272339581273,452.07843042297134,445.3296268878154,438.5808233526594,431.83201981750346,425.0832162823475,418.33441274719155,411.5856092120356,404.83680567687964,398.0880021417237,391.3391986065677,384.59039507141176,377.8415915362558,371.09278800109985,364.3439844659439,357.59518093078793,350.846377395632,344.097573860476,337.34877032532006,330.5999667901641,323.85116325500815,317.1023597198522,310.35355618469623,303.6047526495403,296.8559491143843,290.10714557922836,283.3583420440724,276.60953850891644,269.8607349737605,263.11193143860453,256.36312790344857,249.61432436829259,242.8655208331366,236.1167172979806,229.36791376282463,222.61911022766864,215.87030669251266,209.12150315735667,202.37269962220068,195.6238960870447,188.8750925518887,182.12628901673273,175.37748548157674,168.62868194642076,161.87987841126477,155.13107487610878,148.3822713409528,141.6334678057968,134.90892629225763,128.36391985144593,122.24486950668435,116.74217878761604,111.90241220927703,109.24958336435654,109.24958336435654,109.24958336435654,109.24958336435654,109.24958336435654,109.24958336435654,109.24958336435654,109.24958336435654,109.67238561871096,110.65304843200987,112.18956957643054,114.27924244723599,116.91850634980447,120.1028544872831,123.82678139957494,128.0837575177447,132.86622245984753,138.1655913530432,143.9722702595221,150.27567799972257,157.06427249644224,164.32558033379456,172.0462286191442,180.21197851000608,188.80775995895442,197.81770736330674,207.225195900101,217.01287839262622,227.1627226007859,237.6560488596485,248.47356801273122,259.5954196017381,271.0012102846676,282.6700524608683,294.5806030857992,306.71110266068473,319.039414383489,331.54306344805696,344.19927647816166,356.9850210827659,369.87704551819775,382.85191844226,395.88606874462346,408.9558254372438]};
+    const xflrLoadsData = null;
 
     const batteryStates = soln.Power?.battery_states || null;
     const batteryCapacity = soln.Power?.battery_capacity || 0;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xf0f0f0);
+    scene.background = new THREE.Color(0x1a1a1a);
 
     // Align to expected aircraft view: rotate scene instead of remapping every component
     scene.rotation.z = Math.PI;
     scene.rotation.x = -Math.PI / 2;
 
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const canvasContainer = document.getElementById('canvas-container');
+    const canvasHeight = Math.floor(window.innerHeight * 0.6);
+    const canvasWidth = window.innerWidth;
+
+    const camera = new THREE.PerspectiveCamera(75, canvasWidth / canvasHeight, 0.1, 1000);
     camera.position.set(5, 5, 5);
     camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setSize(canvasWidth, canvasHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
-    document.getElementById('canvas-container').appendChild(renderer.domElement);
+    canvasContainer.appendChild(renderer.domElement);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -159,7 +262,7 @@
     scene.add(directionalLight);
 
     function getColorForCategory(name) {
-      const n = name.toLowerCase();
+      const n = (name || '').toLowerCase();
       if (n.includes('wing') || n.includes('stabilizer')) return 0x4A90E2;
       if (n.includes('boom') || n.includes('fuselage') || n.includes('superstructure') || n.includes('interface')) return 0x8B7355;
       if (n.includes('motor') || n.includes('esc') || n.includes('prop')) return 0xE67E22;
@@ -169,27 +272,32 @@
       return 0x9B59B6;
     }
 
-    function createMeshPhong(color, opacity=0.7) {
+    // Lightweight materials + geometry (reduced segments)
+    function createMaterial(color, opacity=0.7) {
       return new THREE.MeshPhongMaterial({
-        color, opacity, transparent: opacity < 1.0, side: THREE.DoubleSide
+        color,
+        opacity,
+        transparent: opacity < 1.0,
+        side: THREE.DoubleSide,
+        emissive: 0x000000,
+        emissiveIntensity: 0.0
       });
     }
 
     function createBox(center, Lx, Ly, Lz, color, userData) {
-      const geometry = new THREE.BoxGeometry(Lx, Ly, Lz, 8, 8, 8);
-      const material = createMeshPhong(color, 0.7);
+      const geometry = new THREE.BoxGeometry(Lx, Ly, Lz); // no subdivisions
+      const material = createMaterial(color, 0.7);
       const mesh = new THREE.Mesh(geometry, material);
       mesh.position.set(center[0], center[1], center[2]);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       mesh.userData = userData;
-      mesh.userData.originalMaterial = material.clone();
       return mesh;
     }
 
     function createCylinder(center, radius, length, axis, color, userData) {
-      const geometry = new THREE.CylinderGeometry(radius, radius, length, 64);
-      const material = createMeshPhong(color, 0.7);
+      const geometry = new THREE.CylinderGeometry(radius, radius, length, 24);
+      const material = createMaterial(color, 0.7);
       const mesh = new THREE.Mesh(geometry, material);
 
       if (axis === 'x') mesh.rotation.z = Math.PI / 2;
@@ -199,19 +307,17 @@
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       mesh.userData = userData;
-      mesh.userData.originalMaterial = material.clone();
       return mesh;
     }
 
     function createSphere(center, radius, color, userData) {
-      const geometry = new THREE.SphereGeometry(radius, 32, 32);
-      const material = createMeshPhong(color, 0.8);
+      const geometry = new THREE.SphereGeometry(radius, 16, 12);
+      const material = createMaterial(color, 0.8);
       const mesh = new THREE.Mesh(geometry, material);
       mesh.position.set(center[0], center[1], center[2]);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       mesh.userData = userData;
-      mesh.userData.originalMaterial = material.clone();
       return mesh;
     }
 
@@ -219,7 +325,7 @@
       const mainWing = soln['Main Wing'] || soln.Main_Wing || {};
       const geometry = soln.Geometry || {};
       const hstab = soln.HStab || {};
-      const vstab = soln['V Stab'] || soln.V_Stab || {};
+      const vstab = soln['V Stab'] || soln.V_Stab || soln.VStab || {};
       const power = soln.Power || {};
       const propulsion = soln.Propulsion || {};
       const airfoils = soln.airfoils || {};
@@ -254,7 +360,6 @@
       const components = massProperties.components || {};
       const geometryMap = {};
 
-      // Precompute maxMass safely
       const masses = Object.values(components).map(c => c.mass || 0);
       const maxMass = Math.max(1e-9, ...(masses.length ? masses : [1e-9]));
 
@@ -333,19 +438,19 @@
 
     // Total CG marker
     const total = massProperties.total || {};
-    const cgGeometry = new THREE.SphereGeometry(0.05, 32, 32);
-    const cgMaterial = new THREE.MeshPhongMaterial({ color: 0xff0000 });
+    const cgGeometry = new THREE.SphereGeometry(0.05, 16, 12);
+    const cgMaterial = new THREE.MeshPhongMaterial({ color: 0xff0000, emissive: 0x000000, emissiveIntensity: 0.0 });
     const cgMesh = new THREE.Mesh(cgGeometry, cgMaterial);
     cgMesh.position.set(total.x_cg || 0, total.y_cg || 0, total.z_cg || 0);
     cgMesh.userData = {
       name: 'Total CG', type: 'cg', mass: total.mass || 0,
       center: [total.x_cg || 0, total.y_cg || 0, total.z_cg || 0],
-      originalMaterial: cgMaterial.clone()
+      inertia: null
     };
     scene.add(cgMesh);
     componentMeshes['Total CG'] = cgMesh;
 
-    // Wireframe tube helper (visible lines)
+    // Wireframe tube helper
     function createWireframeTube(start, end, radius=0.003, color=0x808080) {
       const direction = new THREE.Vector3().subVectors(end, start);
       const length = direction.length();
@@ -371,16 +476,17 @@
       const wireframeColor = 0x808080;
       const wireframeRadius = 0.003;
       const xyz_ref = airplaneGeometry.xyz_ref || [0,0,0];
+      const cgX = (massProperties.total || {}).x_cg || 0;
 
       for (const wing of airplaneGeometry.wings) {
         const xsecs = wing.xsecs || [];
         if (xsecs.length < 2) continue;
 
         function le(xsec) {
-          return new THREE.Vector3(xsec.xyz_le[0] + xyz_ref[0], xsec.xyz_le[1] + xyz_ref[1], xsec.xyz_le[2] + xyz_ref[2]);
+          return new THREE.Vector3(xsec.xyz_le[0] + xyz_ref[0] - cgX, xsec.xyz_le[1] + xyz_ref[1], xsec.xyz_le[2] + xyz_ref[2]);
         }
         function te(xsec) {
-          return new THREE.Vector3(xsec.xyz_le[0] + xsec.chord + xyz_ref[0], xsec.xyz_le[1] + xyz_ref[1], xsec.xyz_le[2] + xyz_ref[2]);
+          return new THREE.Vector3(xsec.xyz_le[0] + xsec.chord + xyz_ref[0] - cgX, xsec.xyz_le[1] + xyz_ref[1], xsec.xyz_le[2] + xyz_ref[2]);
         }
 
         for (let i = 0; i < xsecs.length - 1; i++) {
@@ -415,8 +521,8 @@
         if (xsecs.length < 2) continue;
         for (let i = 0; i < xsecs.length - 1; i++) {
           const a = xsecs[i], b = xsecs[i+1];
-          const c1 = new THREE.Vector3(a.xyz_c[0] + xyz_ref[0], a.xyz_c[1] + xyz_ref[1], a.xyz_c[2] + xyz_ref[2]);
-          const c2 = new THREE.Vector3(b.xyz_c[0] + xyz_ref[0], b.xyz_c[1] + xyz_ref[1], b.xyz_c[2] + xyz_ref[2]);
+          const c1 = new THREE.Vector3(a.xyz_c[0] + xyz_ref[0] + cgX, a.xyz_c[1] + xyz_ref[1], a.xyz_c[2] + xyz_ref[2]);
+          const c2 = new THREE.Vector3(b.xyz_c[0] + xyz_ref[0] - cgX, b.xyz_c[1] + xyz_ref[1], b.xyz_c[2] + xyz_ref[2]);
           scene.add(createWireframeTube(c1, c2, wireframeRadius, wireframeColor));
         }
       }
@@ -450,32 +556,26 @@
     scene.add(createAxisLabel('Y', [0, 2.5, 0], '#00ff00'));
     scene.add(createAxisLabel('Z', [0, 0, 2.5], '#0000ff'));
 
-    // Hover tooltip + highlight
+    // Hover tooltip + highlight (no material cloning; adjust emissive)
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
     const tooltip = document.getElementById('tooltip');
     const allMeshes = Object.values(componentMeshes);
 
-    function restoreMaterial(mesh) {
-      if (mesh?.userData?.originalMaterial) {
-        mesh.material.dispose();
-        mesh.material = mesh.userData.originalMaterial.clone();
-      }
-    }
-
-    function highlightMesh(mesh) {
-      if (!mesh?.material) return;
-      const m = mesh.material.clone();
-      m.emissive = new THREE.Color(0xffffff);
-      m.emissiveIntensity = 0.5;
-      mesh.material = m;
-    }
-
     let hovered = null;
 
+    function setHover(mesh, enabled) {
+      if (!mesh || !mesh.material) return;
+      if (!mesh.material.emissive) return;
+      mesh.material.emissive.setHex(enabled ? 0xffffff : 0x000000);
+      mesh.material.emissiveIntensity = enabled ? 0.35 : 0.0;
+      mesh.material.needsUpdate = true;
+    }
+
     function onMouseMove(event) {
-      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+      const canvasRect = canvasContainer.getBoundingClientRect();
+      mouse.x = ((event.clientX - canvasRect.left) / canvasRect.width) * 2 - 1;
+      mouse.y = -((event.clientY - canvasRect.top) / canvasRect.height) * 2 + 1;
 
       raycaster.setFromCamera(mouse, camera);
       const hits = raycaster.intersectObjects(allMeshes, true);
@@ -483,9 +583,9 @@
       if (hits.length) {
         const obj = hits[0].object;
         if (hovered !== obj) {
-          if (hovered) restoreMaterial(hovered);
+          if (hovered) setHover(hovered, false);
           hovered = obj;
-          highlightMesh(obj);
+          setHover(obj, true);
 
           const ud = obj.userData || {};
           tooltip.style.left = (event.clientX + 10) + 'px';
@@ -511,10 +611,13 @@
 
           tooltip.innerHTML = content;
           tooltip.classList.add('visible');
+        } else {
+          tooltip.style.left = (event.clientX + 10) + 'px';
+          tooltip.style.top = (event.clientY + 10) + 'px';
         }
       } else {
         if (hovered) {
-          restoreMaterial(hovered);
+          setHover(hovered, false);
           hovered = null;
         }
         tooltip.classList.remove('visible');
@@ -523,7 +626,7 @@
 
     renderer.domElement.addEventListener('mousemove', onMouseMove);
     renderer.domElement.addEventListener('mouseleave', () => {
-      if (hovered) restoreMaterial(hovered);
+      if (hovered) setHover(hovered, false);
       hovered = null;
       tooltip.classList.remove('visible');
     });
@@ -535,9 +638,11 @@
     }
 
     window.addEventListener('resize', () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
+      const h = Math.floor(window.innerHeight * 0.6);
+      const w = window.innerWidth;
+      camera.aspect = w / h;
       camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setSize(w, h);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     });
 
@@ -568,8 +673,8 @@
               {
                 label: 'Battery State (Wh)',
                 data: batteryStates,
-                borderColor: 'rgb(75, 192, 192)',
-                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                borderColor: 'rgb(76, 175, 80)',
+                backgroundColor: 'rgba(76, 175, 80, 0.2)',
                 yAxisID: 'y',
                 tension: 0.1,
                 pointRadius: 0
@@ -577,8 +682,8 @@
               {
                 label: 'Power Generation (W)',
                 data: powerGeneration,
-                borderColor: 'rgb(255, 99, 132)',
-                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                borderColor: 'rgb(255, 152, 0)',
+                backgroundColor: 'rgba(255, 152, 0, 0.2)',
                 yAxisID: 'y1',
                 tension: 0.1,
                 pointRadius: 0
@@ -590,27 +695,1131 @@
             maintainAspectRatio: false,
             interaction: { mode: 'index', intersect: false },
             plugins: {
-              title: { display: true, text: '24-Hour Power Generation & Battery State' },
-              legend: { display: true, position: 'top' }
+              title: { display: true, text: '24-Hour Power Generation & Battery State', color: '#4CAF50' },
+              legend: { display: true, position: 'top', labels: { color: '#e0e0e0' } }
             },
             scales: {
-              x: { display: true, title: { display: true, text: 'Time (hours)' } },
+              x: {
+                display: true,
+                title: { display: true, text: 'Time (hours)', color: '#e0e0e0' },
+                ticks: { color: '#aaa' },
+                grid: { color: '#444' }
+              },
               y: {
-                type: 'linear', display: true, position: 'left',
-                title: { display: true, text: 'Battery State (Wh)' },
+                type: 'linear',
+                display: true,
+                position: 'left',
+                title: { display: true, text: 'Battery State (Wh)', color: '#e0e0e0' },
+                ticks: { color: '#aaa' },
+                grid: { color: '#444' },
                 min: 0,
                 max: batteryCapacity ? batteryCapacity * 1.1 : undefined
               },
               y1: {
-                type: 'linear', display: true, position: 'right',
-                title: { display: true, text: 'Power Generation (W)' },
-                grid: { drawOnChartArea: false }
+                type: 'linear',
+                display: true,
+                position: 'right',
+                title: { display: true, text: 'Power Generation (W)', color: '#e0e0e0' },
+                ticks: { color: '#aaa' },
+                grid: { drawOnChartArea: false, color: '#444' }
               }
             }
           }
         });
       }
     }
+
+    // Energy balance chart (embedded data; no fetch)
+    let energyBalanceChart = null;
+
+    function initEnergyBalanceChart() {
+      if (energyBalanceChart) return;
+
+      const canvas = document.getElementById('energyBalanceChart');
+      if (!canvas) return;
+
+      const tabContent = canvas.closest('.tab-content');
+      if (!tabContent || !tabContent.classList.contains('active')) return;
+
+      if (!energyBalanceData) {
+        const parent = canvas.parentElement;
+        parent.innerHTML = "<div style='color:#aaa; font-size:13px; padding:10px; border:1px dashed #555; border-radius:6px;'>No energy balance data found (energy_balance_data.csv).</div>";
+        return;
+      }
+
+      // Build a *physically consistent* baseline series by re-integrating the battery energy
+      // from the power balance. The embedded CSV battery_state_Wh may include discontinuities
+      // (e.g. solver resets / saturation), which can appear as impossible charge spikes.
+      // This keeps the baseline plot consistent with the sensitivity plots (including 0%).
+      const series48 = makeVariantSeries('weight', 0);
+      const timeHours = series48.time_hr || [];
+      const periodType = series48.period_type || [];
+      const powerGenerated = series48.power_generated_W || [];
+      const powerUsed = series48.power_used_W || [];
+      const batteryState = series48.battery_state_Wh || [];
+      if (!timeHours.length) return;
+
+      canvas.style.height = '300px';
+      canvas.style.maxHeight = '300px';
+
+      // Calculate battery state range for y axis with padding
+      const validBatteryState = batteryState.filter(v => !isNaN(v) && isFinite(v));
+      const battMin = validBatteryState.length > 0 ? Math.min(...validBatteryState) : 0;
+      const battMax = validBatteryState.length > 0 ? Math.max(...validBatteryState) : 100;
+      const battRange = battMax - battMin;
+      const battPadding = Math.max(battRange * 0.1, 5); // 10% padding or at least 5Wh
+      const battYMin = Math.max(0, battMin - battPadding);
+      const battYMax = battMax + battPadding;
+
+      // Calculate power range for y1 axis with padding
+      const allPowerValues = [...powerGenerated, ...powerUsed].filter(v => !isNaN(v) && isFinite(v));
+      const powerMin = allPowerValues.length > 0 ? Math.min(...allPowerValues) : 0;
+      const powerMax = allPowerValues.length > 0 ? Math.max(...allPowerValues) : 100;
+      const powerRange = powerMax - powerMin;
+      const powerPadding = Math.max(powerRange * 0.1, 10); // 10% padding or at least 10W
+      const powerYMin = Math.min(0, powerMin - powerPadding);
+      const powerYMax = powerMax + powerPadding;
+
+      // Create background datasets for period highlighting
+      // Use the maximum range that covers both y and y1 axes for full coverage
+      const fullYMin = Math.min(battYMin, powerYMin);
+      const fullYMax = Math.max(battYMax, powerYMax);
+      
+      // Create data arrays for period backgrounds (fill from min to max)
+      const createPeriodBackground = (periodName, color) => {
+        const data = timeHours.map((t, i) => {
+          const period = periodType[i] || 'day';
+          // Return fullYMax where period matches, fullYMin otherwise to create fill effect
+          return (period === periodName || (periodName === 'dawn_dusk' && (period === 'dawn_dusk' || period === 'dusk'))) ? fullYMax : fullYMin;
+        });
+        return {
+          label: periodName === 'dawn_dusk' ? 'Dawn/Dusk' : periodName.charAt(0).toUpperCase() + periodName.slice(1),
+          data: data,
+          backgroundColor: color,
+          borderColor: 'transparent',
+          borderWidth: 0,
+          fill: { value: fullYMin },
+          pointRadius: 0,
+          pointHoverRadius: 0,
+          order: -1, // Render behind main datasets
+          yAxisID: 'y',
+          tension: 0
+        };
+      };
+
+      const backgroundDatasets = [];
+      if (periodType.length > 0) {
+        // Night background (dark blue)
+        backgroundDatasets.push(createPeriodBackground('night', 'rgba(0, 0, 128, 0.20)'));
+        // Dawn/Dusk background (orange)
+        backgroundDatasets.push(createPeriodBackground('dawn_dusk', 'rgba(255, 165, 0, 0.18)'));
+        // Day background (light yellow) - subtle indication
+        backgroundDatasets.push(createPeriodBackground('day', 'rgba(255, 250, 205, 0.15)'));
+      }
+
+      energyBalanceChart = new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels: timeHours.map(t => t.toFixed(2)),
+          datasets: [
+            ...backgroundDatasets,
+            {
+              label: 'Power Generated (W)',
+              data: powerGenerated,
+              borderColor: 'rgb(76, 175, 80)',
+              backgroundColor: 'rgba(76, 175, 80, 0.2)',
+              yAxisID: 'y1',
+              tension: 0.1,
+              pointRadius: 0
+            },
+            {
+              label: 'Power Used (W)',
+              data: powerUsed,
+              borderColor: 'rgb(244, 67, 54)',
+              backgroundColor: 'rgba(244, 67, 54, 0.2)',
+              yAxisID: 'y1',
+              tension: 0.1,
+              pointRadius: 0
+            },
+            {
+              label: 'Battery State (Wh)',
+              data: batteryState,
+              borderColor: 'rgb(33, 150, 243)',
+              backgroundColor: 'rgba(33, 150, 243, 0.2)',
+              yAxisID: 'y',
+              tension: 0.1,
+              pointRadius: 0
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            title: {
+              display: true,
+              text: `Energy Balance Analysis${energyBalanceData.source_csv ? " (" + energyBalanceData.source_csv + ")" : ""}`,
+              color: '#4CAF50'
+            },
+            legend: { display: true, position: 'top', labels: { color: '#e0e0e0' } }
+          },
+          scales: {
+            x: {
+              display: true,
+              title: { display: true, text: 'Time (hours)', color: '#e0e0e0' },
+              ticks: { color: '#aaa' },
+              grid: { color: '#444' }
+            },
+            y: {
+              type: 'linear',
+              display: true,
+              position: 'left',
+              title: { display: true, text: 'Battery State (Wh)', color: '#e0e0e0' },
+              ticks: { color: '#aaa' },
+              grid: { color: '#444' },
+              min: battYMin,
+              max: battYMax
+            },
+            y1: {
+              type: 'linear',
+              display: true,
+              position: 'right',
+              title: { display: true, text: 'Power (W)', color: '#e0e0e0' },
+              ticks: { color: '#aaa' },
+              grid: { drawOnChartArea: false, color: '#444' },
+              min: powerYMin,
+              max: powerYMax
+            }
+          }
+        }
+      });
+    }
+
+    // ----------------------------
+    // Sensitivity Analysis (48h) - in-browser recompute based on embedded baseline
+    // ----------------------------
+    const sensCharts = {};
+    function expandTo48h(series) {
+      const t = series.time_hr || [];
+      if (!t.length) return series;
+
+      const tMax = Math.max(...t);
+      // If it's already ~48h, do nothing
+      if (tMax > 30) return series;
+
+      // Duplicate day 1 -> day 2 (avoid duplicating the first point)
+      const start = 1;
+      const t2 = t.slice(start).map(v => Number(v) + 24);
+
+      const dup = (arr) => (arr || []).concat((arr || []).slice(start));
+      const dupShift = (arr) => (arr || []).concat((arr || []).slice(start));
+
+      return {
+        time_hr: t.concat(t2),
+        period_type: dupShift(series.period_type),
+        solar_flux_W_per_m2: dup(series.solar_flux_W_per_m2),
+        power_generated_W: dup(series.power_generated_W),
+        power_used_W: dup(series.power_used_W),
+        battery_state_Wh: dup(series.battery_state_Wh),
+      };
+    }
+
+    
+    function destroyIfExists(id) {
+      if (sensCharts[id]) {
+        try { sensCharts[id].destroy(); } catch (e) {}
+        delete sensCharts[id];
+      }
+    }
+
+    function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
+
+    function estimateBatteryPowerLimits(timeHours, Eseries) {
+      // Estimate effective charge/discharge power limits from a baseline energy trace.
+      // Uses finite differences dE/dt (Wh/hr == W) and returns conservative (95th percentile) limits.
+      if (!timeHours || !Eseries || timeHours.length < 3 || Eseries.length !== timeHours.length) {
+        return { maxChargeW: Infinity, maxDischargeW: Infinity };
+      }
+      const rates = [];
+      for (let i = 0; i < timeHours.length - 1; i++) {
+        const t0 = Number(timeHours[i]);
+        const t1 = Number(timeHours[i + 1]);
+        const dt = t1 - t0;
+        if (!(dt > 1e-9)) continue;
+        const e0 = Number(Eseries[i]);
+        const e1 = Number(Eseries[i + 1]);
+        if (!isFinite(e0) || !isFinite(e1)) continue;
+        rates.push((e1 - e0) / dt); // W
+      }
+      if (!rates.length) return { maxChargeW: Infinity, maxDischargeW: Infinity };
+      const pos = rates.filter(r => isFinite(r) && r > 0).sort((a,b)=>a-b);
+      const neg = rates.filter(r => isFinite(r) && r < 0).map(r => -r).sort((a,b)=>a-b); // magnitudes
+      const q = (arr, p) => {
+        if (!arr.length) return Infinity;
+        const idx = Math.min(arr.length - 1, Math.max(0, Math.floor(p * (arr.length - 1))));
+        return arr[idx];
+      };
+      // 95th percentile to avoid one-off numerical artifacts
+      const maxChargeW = q(pos, 0.95);
+      const maxDischargeW = q(neg, 0.95);
+      return {
+        maxChargeW: (isFinite(maxChargeW) && maxChargeW > 0) ? maxChargeW : Infinity,
+        maxDischargeW: (isFinite(maxDischargeW) && maxDischargeW > 0) ? maxDischargeW : Infinity
+      };
+    }
+
+    function integrateBattery(timeHours, pGen, pUse, E0, capWh, limits) {
+      // Robust integration of battery energy (Wh) from power balance (W).
+      // - trapezoidal rule (reduces stair-step artifacts)
+      // - optional charge/discharge power limits (inferred from baseline curve)
+      // - efficiency + saturation behavior without "energy injection" spikes
+      const n = (timeHours || []).length;
+      const E = new Array(n).fill(0);
+      if (n === 0) return E;
+
+      const etaCharge = 0.98;     // simple lumped charge efficiency
+      const etaDischarge = 0.98;  // lumped discharge efficiency
+      const maxChargeW = (limits && isFinite(limits.maxChargeW)) ? limits.maxChargeW : Infinity;
+      const maxDischargeW = (limits && isFinite(limits.maxDischargeW)) ? limits.maxDischargeW : Infinity;
+
+      E[0] = clamp(Number(E0) || 0, 0, capWh);
+
+      const netAt = (i) => {
+        const g = Number(pGen[i]) || 0;
+        const u = Number(pUse[i]) || 0;
+        let net = g - u; // +charges battery, -discharges battery
+        // Apply power limits (pre-efficiency)
+        net = clamp(net, -maxDischargeW, maxChargeW);
+        return net;
+      };
+
+      for (let i = 0; i < n - 1; i++) {
+        const t0 = Number(timeHours[i]);
+        const t1 = Number(timeHours[i + 1]);
+        let dt = t1 - t0; // hours
+        if (!(dt > 0)) {
+          E[i + 1] = E[i];
+          continue;
+        }
+
+        let net0 = netAt(i);
+        let net1 = netAt(i + 1);
+        // Trapezoid average power
+        let netAvg = 0.5 * (net0 + net1);
+
+        // Efficiency: charging stores less than electrical surplus; discharging removes more than load deficit.
+        if (netAvg >= 0) {
+          netAvg = netAvg * etaCharge;
+        } else {
+          netAvg = netAvg / etaDischarge;
+        }
+
+        // Enforce saturation *continuously* (don't allow a single step to "teleport" past cap)
+        let next = E[i] + netAvg * dt;
+
+        if (next > capWh) {
+          // If we're at/near full, surplus should be curtailed (no additional stored energy)
+          next = capWh;
+        } else if (next < 0) {
+          next = 0;
+        }
+
+        E[i + 1] = next;
+      }
+      return E;
+    }
+
+
+    // Builds a chart visually consistent with your existing energy balance plot,
+    // plus an optional Solar Flux dataset on a third axis (to match your "bottom of page" 48h style).
+    function buildEnergyBalanceChart(canvasId, series, titleText) {
+      const ZERO_PAD_WH = 20;   // ensures space past 0 Wh
+      const ZERO_PAD_W  = 30;   // ensures space past 0 W
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return null;
+
+      const timeHours = series.time_hr || [];
+      const periodType = series.period_type || [];
+      const powerGenerated = series.power_generated_W || [];
+      const powerUsed = series.power_used_W || [];
+      const batteryState = series.battery_state_Wh || [];
+      const solarFlux = series.solar_flux_W_per_m2 || [];
+
+      if (!timeHours.length) return null;
+
+      // Axis ranges (same approach as initEnergyBalanceChart)
+      const validBatteryState = batteryState.filter(v => !isNaN(v) && isFinite(v));
+      const battMin = validBatteryState.length > 0 ? Math.min(...validBatteryState) : 0;
+      const battMax = validBatteryState.length > 0 ? Math.max(...validBatteryState) : 100;
+      const battRange = battMax - battMin;
+      const battPadding = Math.max(battRange * 0.15, ZERO_PAD_WH);
+      const battYMin = Math.min(0 - ZERO_PAD_WH, battMin - battPadding);
+      const battYMax = battMax + battPadding;
+
+
+      const allPowerValues = [...powerGenerated, ...powerUsed].filter(v => !isNaN(v) && isFinite(v));
+      const powerMin = allPowerValues.length > 0 ? Math.min(...allPowerValues) : 0;
+      const powerMax = allPowerValues.length > 0 ? Math.max(...allPowerValues) : 100;
+      const powerRange = powerMax - powerMin;
+      const powerPadding = Math.max(powerRange * 0.15, ZERO_PAD_W);
+      const powerYMin = Math.min(0 - ZERO_PAD_W, powerMin - powerPadding);
+      const powerYMax = powerMax + powerPadding;
+
+
+      const fullYMin = Math.min(battYMin, powerYMin);
+      const fullYMax = Math.max(battYMax, powerYMax);
+
+      const createPeriodBackground = (periodName, color) => {
+        const data = timeHours.map((t, i) => {
+          const period = periodType[i] || 'day';
+          return (period === periodName || (periodName === 'dawn_dusk' && (period === 'dawn_dusk' || period === 'dusk')))
+            ? fullYMax
+            : fullYMin;
+        });
+        return {
+          label: periodName === 'dawn_dusk' ? 'Dawn/Dusk' : periodName.charAt(0).toUpperCase() + periodName.slice(1),
+          data,
+          backgroundColor: color,
+          borderColor: 'transparent',
+          borderWidth: 0,
+          fill: { value: fullYMin },
+          pointRadius: 0,
+          pointHoverRadius: 0,
+          order: -1,
+          yAxisID: 'y',
+          tension: 0
+        };
+      };
+
+      const backgroundDatasets = [];
+      if (periodType.length > 0) {
+        backgroundDatasets.push(createPeriodBackground('night', 'rgba(0, 0, 128, 0.20)'));
+        backgroundDatasets.push(createPeriodBackground('dawn_dusk', 'rgba(255, 165, 0, 0.18)'));
+        backgroundDatasets.push(createPeriodBackground('day', 'rgba(255, 250, 205, 0.15)'));
+      }
+
+      return new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels: timeHours.map(t => Number(t).toFixed(2)),
+          datasets: [
+            ...backgroundDatasets,
+            {
+              label: 'Power Generated (W)',
+              data: powerGenerated,
+              borderColor: 'rgb(76, 175, 80)',
+              backgroundColor: 'rgba(76, 175, 80, 0.2)',
+              yAxisID: 'y1',
+              tension: 0.1,
+              pointRadius: 0
+            },
+            {
+              label: 'Power Used (W)',
+              data: powerUsed,
+              borderColor: 'rgb(244, 67, 54)',
+              backgroundColor: 'rgba(244, 67, 54, 0.2)',
+              yAxisID: 'y1',
+              tension: 0.1,
+              pointRadius: 0
+            },
+            {
+              label: 'Battery Energy (Wh)',
+              data: batteryState,
+              borderColor: 'rgb(33, 150, 243)',
+              backgroundColor: 'rgba(33, 150, 243, 0.2)',
+              yAxisID: 'y',
+              tension: 0.1,
+              pointRadius: 0
+            },
+            // Solar flux (optional) to match your 48h "bottom of page" style
+            ...(solarFlux && solarFlux.length ? [{
+              label: 'Solar Flux (W/m²)',
+              data: solarFlux,
+              borderColor: 'rgb(255, 152, 0)',
+              backgroundColor: 'rgba(255, 152, 0, 0.0)',
+              yAxisID: 'y2',
+              tension: 0.1,
+              pointRadius: 0,
+              borderDash: [6, 4]
+            }] : [])
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            title: { display: true, text: titleText, color: '#4CAF50' },
+            legend: { display: true, position: 'top', labels: { color: '#e0e0e0' } }
+          },
+          scales: {
+            x: {
+              display: true,
+              title: { display: true, text: 'Time (hours)', color: '#e0e0e0' },
+              ticks: { color: '#aaa' },
+              grid: { color: '#444' }
+            },
+            y: {
+              type: 'linear',
+              display: true,
+              position: 'left',
+              title: { display: true, text: 'Battery Energy (Wh)', color: '#e0e0e0' },
+              ticks: { color: '#aaa' },
+              grid: { color: '#444' },
+              min: battYMin,
+              max: battYMax
+            },
+            y1: {
+              type: 'linear',
+              display: true,
+              position: 'right',
+              title: { display: true, text: 'Power (W)', color: '#e0e0e0' },
+              ticks: { color: '#aaa' },
+              grid: { drawOnChartArea: false, color: '#444' },
+              min: powerYMin,
+              max: powerYMax
+            },
+            y2: {
+              type: 'linear',
+              display: true,
+              position: 'right',
+              offset: true,
+              title: { display: true, text: 'Solar Flux (W/m²)', color: '#e0e0e0' },
+              ticks: { color: '#aaa' },
+              grid: { drawOnChartArea: false, color: '#444' }
+            }
+          }
+        }
+      });
+    }
+
+    // Map dropdown setting -> modified series
+    function makeVariantSeries(kind, selectionValue) {
+      // Baseline
+      const base = expandTo48h(energyBalanceData);
+      const timeHours = base.time_hr || [];
+      const periodType = base.period_type || [];
+      const solarFlux = base.solar_flux_W_per_m2 || [];
+      const pGen0 = base.power_generated_W || [];
+      const pUse0 = base.power_used_W || [];
+      const E0_series = base.battery_state_Wh || [];
+
+      const batteryCapacity = (soln && soln.Power && soln.Power.battery_capacity) ? Number(soln.Power.battery_capacity) : null;
+      const E0 = E0_series.length ? Number(E0_series[0]) : (batteryCapacity || 0);
+
+      // Parse selection
+      // For percent dropdowns: -0.2, -0.1, 0, 0.1, 0.2
+      // For cg: centimeters integer, e.g. -40 .. +20
+      let pGen = pGen0.slice();
+      let pUse = pUse0.slice();
+
+      if (kind === 'weight' || kind === 'drag') {
+        const delta = Number(selectionValue) || 0;
+        pUse = pUse0.map(v => (Number(v) || 0) * (1 + delta));
+      }
+
+      if (kind === 'solar' || kind === 'cellEff' || kind === 'solarPower') {
+        const delta = Number(selectionValue) || 0;
+        pGen = pGen0.map(v => (Number(v) || 0) * (1 + delta));
+      }
+
+      if (kind === 'motorEff') {
+        // Efficiency up => electrical power down. Use reciprocal scaling.
+        const delta = Number(selectionValue) || 0;
+        const scale = 1 / Math.max(0.2, (1 + delta)); // prevent divide-by-near-zero
+        pUse = pUse0.map(v => (Number(v) || 0) * scale);
+      }
+
+      if (kind === 'cg') {
+        const shift_cm = Number(selectionValue) || 0;
+        // Edit this coefficient to match your trim/drag model:
+        const penalty_per_cm = 0.002; // 0.2% electrical power per cm of |shift|
+        const scale = 1 + penalty_per_cm * Math.abs(shift_cm);
+        pUse = pUse0.map(v => (Number(v) || 0) * scale);
+      }
+
+      const cap = batteryCapacity || Math.max(...(E0_series.length ? E0_series : [0]));
+
+      // Always (re-)integrate battery energy from the power balance, even at 0% delta.
+      // The embedded CSV battery_state_Wh can contain discontinuities (e.g. solver resets / saturation),
+      // which show up as impossible "teleport" charging spikes. Re-integration yields the smooth,
+      // rate-limited curve used for non-zero sensitivity values.
+      const limits = estimateBatteryPowerLimits(timeHours, E0_series);
+
+      const batt = integrateBattery(timeHours, pGen, pUse, E0, cap, limits);
+
+      return {
+        time_hr: timeHours,
+        period_type: periodType,
+        solar_flux_W_per_m2: solarFlux,
+        power_generated_W: pGen,
+        power_used_W: pUse,
+        battery_state_Wh: batt
+      };
+    }
+
+    function fillPercentSelect(selId) {
+      const sel = document.getElementById(selId);
+      if (!sel) return;
+      sel.innerHTML = '';
+      const opts = [
+        { label: '-20%', v: -0.2 },
+        { label: '-10%', v: -0.1 },
+        { label: '0%', v: 0.0 },
+        { label: '+10%', v: 0.1 },
+        { label: '+20%', v: 0.2 }
+      ];
+      for (const o of opts) {
+        const el = document.createElement('option');
+        el.value = String(o.v);
+        el.textContent = o.label;
+        if (o.v === 0) el.selected = true;
+        sel.appendChild(el);
+      }
+    }
+
+    function fillCgSelect(selId) {
+      const sel = document.getElementById(selId);
+      if (!sel) return;
+      sel.innerHTML = '';
+      for (let cm = -40; cm <= 20; cm += 5) {
+        const el = document.createElement('option');
+        el.value = String(cm);
+        el.textContent = `${cm} cm`;
+        if (cm === 0) el.selected = true;
+        sel.appendChild(el);
+      }
+    }
+
+    function initSensitivityCharts() {
+      // Only run if power tab is active (same guard style as initEnergyBalanceChart)
+      const powerTab = document.getElementById('tab-power');
+      if (!powerTab || !powerTab.classList.contains('active')) return;
+
+      if (!energyBalanceData) return;
+
+      // Populate selects once
+      fillPercentSelect('sensSel_weight');
+      fillPercentSelect('sensSel_drag');
+      fillPercentSelect('sensSel_solar');
+      fillPercentSelect('sensSel_cellEff');
+      fillPercentSelect('sensSel_solarPower');
+      fillPercentSelect('sensSel_motorEff');
+      fillCgSelect('sensSel_cg');
+
+      const defs = [
+        { kind: 'weight', sel: 'sensSel_weight', canvas: 'sensChart_weight', title: 'Sensitivity: Weight' },
+        { kind: 'drag', sel: 'sensSel_drag', canvas: 'sensChart_drag', title: 'Sensitivity: Drag' },
+        { kind: 'solar', sel: 'sensSel_solar', canvas: 'sensChart_solar', title: 'Sensitivity: Solar (Irradiance)' },
+        { kind: 'cellEff', sel: 'sensSel_cellEff', canvas: 'sensChart_cellEff', title: 'Sensitivity: Solar Cell Efficiency' },
+        { kind: 'solarPower', sel: 'sensSel_solarPower', canvas: 'sensChart_solarPower', title: 'Sensitivity: Solar Power (Panel/Area Proxy)' },
+        { kind: 'motorEff', sel: 'sensSel_motorEff', canvas: 'sensChart_motorEff', title: 'Sensitivity: Motor Efficiency' },
+        { kind: 'cg', sel: 'sensSel_cg', canvas: 'sensChart_cg', title: 'Sensitivity: CG Shift' }
+      ];
+
+      function renderOne(d) {
+        const sel = document.getElementById(d.sel);
+        const v = sel ? sel.value : '0';
+
+        const series = makeVariantSeries(d.kind, v);
+
+        // If chart exists, update it in-place
+        const ch = sensCharts[d.canvas];
+        if (ch) {
+          ch.data.labels = series.time_hr.map(t => Number(t).toFixed(2));
+
+          // Datasets order in buildEnergyBalanceChart:
+          // ...background, Power Gen, Power Used, Battery, Solar Flux (optional)
+          // Update by label to be safe:
+          for (const ds of ch.data.datasets) {
+            if (ds.label === 'Power Generated (W)') ds.data = series.power_generated_W;
+            if (ds.label === 'Power Used (W)') ds.data = series.power_used_W;
+            if (ds.label === 'Battery Energy (Wh)') ds.data = series.battery_state_Wh;
+            if (ds.label === 'Solar Flux (W/m²)') ds.data = series.solar_flux_W_per_m2;
+          }
+
+          ch.update();
+          return;
+        }
+
+        // Otherwise create it once
+        sensCharts[d.canvas] = buildEnergyBalanceChart(d.canvas, series, d.title);
+      }
+
+
+      // Initial render
+      for (const d of defs) renderOne(d);
+
+      // Re-render on change
+      for (const d of defs) {
+        const sel = document.getElementById(d.sel);
+        if (!sel) continue;
+        sel.addEventListener('change', () => renderOne(d));
+      }
+    }
+
+
+    // XFLR loads tab (embedded data; no fetch)
+    let xflrLoadsInitialized = false;
+    let xflrLiftChart = null;
+    let xflrMomentChart = null;
+    let xflrBendingChart = null;
+
+    function destroyChart(ch) {
+      if (!ch) return null;
+      try { ch.destroy(); } catch (e) {}
+      return null;
+    }
+
+    function fmtNum(v, digits=6) {
+      const x = Number(v);
+      if (!isFinite(x)) return '';
+      // Avoid scientific notation for common ranges while keeping precision
+      return x.toFixed(digits).replace(/\.?0+$/, '');
+    }
+
+    function setXflrMessage(text) {
+      const el = document.getElementById('xflrLoadsMessage');
+      if (el) el.textContent = text || '';
+    }
+
+    function getXflrCases() {
+      const cases = xflrLoadsData && xflrLoadsData.cases ? xflrLoadsData.cases : [];
+      return Array.isArray(cases) ? cases : [];
+    }
+
+    function getSelectedXflrCase() {
+      const caseSel = document.getElementById('xflrCaseSelect');
+      const cases = getXflrCases();
+      if (!caseSel || !cases.length) return null;
+      const id = caseSel.value;
+      return cases.find(c => c.id === id) || cases[0];
+    }
+
+    function getSelectedXflrSurface(caseObj) {
+      const surfSel = document.getElementById('xflrSurfaceSelect');
+      if (!surfSel || !caseObj) return null;
+      const surfaces = caseObj.surfaces || {};
+      const keys = Object.keys(surfaces);
+      if (!keys.length) return null;
+      const name = surfSel.value;
+      return surfaces[name] ? name : keys[0];
+    }
+
+    function populateXflrSelectors() {
+      const caseSel = document.getElementById('xflrCaseSelect');
+      const surfSel = document.getElementById('xflrSurfaceSelect');
+      const cases = getXflrCases();
+      if (!caseSel || !surfSel) return;
+
+      caseSel.innerHTML = '';
+      for (const c of cases) {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = c.label || c.id;
+        caseSel.appendChild(opt);
+      }
+
+      const c0 = getSelectedXflrCase();
+      surfSel.innerHTML = '';
+      if (c0 && c0.surfaces) {
+        const names = Object.keys(c0.surfaces);
+        names.sort();
+        for (const s of names) {
+          const opt = document.createElement('option');
+          opt.value = s;
+          opt.textContent = s;
+          surfSel.appendChild(opt);
+        }
+      }
+    }
+
+    function updateXflrSurfaceOptions() {
+      const caseObj = getSelectedXflrCase();
+      const surfSel = document.getElementById('xflrSurfaceSelect');
+      if (!surfSel) return;
+      const prev = surfSel.value;
+      surfSel.innerHTML = '';
+      if (!caseObj || !caseObj.surfaces) return;
+      const names = Object.keys(caseObj.surfaces);
+      names.sort();
+      for (const s of names) {
+        const opt = document.createElement('option');
+        opt.value = s;
+        opt.textContent = s;
+        surfSel.appendChild(opt);
+      }
+      if (names.includes(prev)) surfSel.value = prev;
+    }
+
+    function buildXflrDelimited(stations, meta, includeMeta=false, delimiter=',') {
+      const lines = [];
+      if (includeMeta) {
+        lines.push(`# source_file: ${meta.source_file || ''}`);
+        if (meta.alpha_deg !== null && meta.alpha_deg !== undefined) lines.push(`# alpha_deg: ${meta.alpha_deg}`);
+        if (meta.qinf_mps !== null && meta.qinf_mps !== undefined) lines.push(`# qinf_mps: ${meta.qinf_mps}`);
+        if (meta.rho_kg_m3 !== null && meta.rho_kg_m3 !== undefined) lines.push(`# rho_kg_m3: ${meta.rho_kg_m3}`);
+        if (meta.surface) lines.push(`# surface: ${meta.surface}`);
+        lines.push(`# units: station_y_m(m), chord_m(m), Lprime(N/m), Mprime(Nm/m), BM(Nm)`);
+      }
+
+      const header = [
+        'station_y_m',
+        'chord_m',
+        'Cl',
+        'CmGeom',
+        'CmAirf_c4',
+        'Lprime_N_per_m',
+        'Mprime_CmGeom_Nm_per_m',
+        'Mprime_CmAirf_Nm_per_m',
+        'BM'
+      ].join(delimiter);
+      lines.push(header);
+
+      for (const s of stations) {
+        const row = [
+          fmtNum(s.station_y_m, 6),
+          fmtNum(s.chord_m, 6),
+          fmtNum(s.Cl, 6),
+          fmtNum(s.CmGeom, 6),
+          fmtNum(s.CmAirf_c4, 6),
+          fmtNum(s.Lprime_N_per_m, 6),
+          fmtNum(s.Mprime_CmGeom_Nm_per_m, 6),
+          fmtNum(s.Mprime_CmAirf_Nm_per_m, 6),
+          fmtNum(s.BM, 6),
+        ].join(delimiter);
+        lines.push(row);
+      }
+      return lines.join('\n');
+    }
+
+    function buildXflrCsv(stations, meta, includeMeta=false) {
+      return buildXflrDelimited(stations, meta, includeMeta, ',');
+    }
+
+    function buildXflrTsv(stations, meta) {
+      // TSV is the most reliable for copy/paste into Google Sheets / Excel
+      // (commas sometimes paste into a single column depending on locale/settings)
+      return buildXflrDelimited(stations, meta, false, '\t');
+    }
+
+    async function copyTextToClipboard(text) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    function fallbackShowCsv(text) {
+      const ta = document.getElementById('xflrCsvFallback');
+      if (!ta) return;
+      ta.value = text;
+      ta.style.display = 'block';
+      ta.focus();
+      ta.select();
+      try { document.execCommand('copy'); } catch (e) {}
+    }
+
+    function safeFilename(s) {
+      return String(s || 'xflr_loads').replace(/[^a-zA-Z0-9._-]+/g, '_');
+    }
+
+    function downloadCsv(text, filename) {
+      const blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    }
+
+    function renderXflrLoads() {
+      const caseObj = getSelectedXflrCase();
+      if (!caseObj) {
+        setXflrMessage('No XFLR loads found in this run (missing output/<run>/XFLR/*_a=*_v=*ms.txt).');
+        return;
+      }
+      const surfaceName = getSelectedXflrSurface(caseObj);
+      if (!surfaceName) {
+        setXflrMessage('No surfaces found in selected case.');
+        return;
+      }
+      const surface = (caseObj.surfaces || {})[surfaceName] || {};
+      const stations = surface.stations || [];
+      if (!stations.length) {
+        setXflrMessage('No station data for selected surface.');
+        return;
+      }
+
+      setXflrMessage(`Source: ${caseObj.source_file} | ${caseObj.label} | ρ=${fmtNum(caseObj.rho_kg_m3, 4)} kg/m³`);
+
+      // Update table
+      const tbody = document.querySelector('#xflrLoadsTable tbody');
+      if (tbody) {
+        tbody.innerHTML = '';
+        for (const s of stations) {
+          const tr = document.createElement('tr');
+          const cells = [
+            fmtNum(s.station_y_m, 4),
+            fmtNum(s.chord_m, 4),
+            fmtNum(s.Cl, 6),
+            fmtNum(s.CmGeom, 6),
+            fmtNum(s.CmAirf_c4, 6),
+            fmtNum(s.Lprime_N_per_m, 3),
+            fmtNum(s.Mprime_CmGeom_Nm_per_m, 3),
+            fmtNum(s.Mprime_CmAirf_Nm_per_m, 3),
+            fmtNum(s.BM, 3),
+          ];
+          for (const c of cells) {
+            const td = document.createElement('td');
+            td.textContent = c;
+            td.style.padding = '6px 8px';
+            td.style.borderBottom = '1px solid #2a2a2a';
+            tr.appendChild(td);
+          }
+          tbody.appendChild(tr);
+        }
+      }
+
+      // Charts
+      xflrLiftChart = destroyChart(xflrLiftChart);
+      xflrMomentChart = destroyChart(xflrMomentChart);
+      xflrBendingChart = destroyChart(xflrBendingChart);
+
+      const liftCanvas = document.getElementById('xflrLiftChart');
+      const momCanvas = document.getElementById('xflrMomentChart');
+      const bendCanvas = document.getElementById('xflrBendingChart');
+      if (!liftCanvas || !momCanvas || !bendCanvas) return;
+
+      const liftPoints = stations.map(s => ({ x: s.station_y_m, y: s.Lprime_N_per_m }));
+      const mGeomPoints = stations.map(s => ({ x: s.station_y_m, y: s.Mprime_CmGeom_Nm_per_m }));
+      const mAirfPoints = stations.map(s => ({ x: s.station_y_m, y: s.Mprime_CmAirf_Nm_per_m }));
+      const bmPoints = stations.map(s => ({ x: s.station_y_m, y: s.BM }));
+
+      xflrLiftChart = new Chart(liftCanvas, {
+        type: 'line',
+        data: {
+          datasets: [{
+            label: "Lift per span L' (N/m)",
+            data: liftPoints,
+            borderColor: 'rgb(76, 175, 80)',
+            backgroundColor: 'rgba(76, 175, 80, 0.15)',
+            tension: 0.05,
+            pointRadius: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          parsing: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            title: { display: true, text: "Lift per span", color: '#4CAF50' },
+            legend: { display: true, position: 'top', labels: { color: '#e0e0e0' } }
+          },
+          scales: {
+            x: {
+              type: 'linear',
+              title: { display: true, text: 'Station y (m)', color: '#e0e0e0' },
+              ticks: { color: '#aaa' },
+              grid: { color: '#444' }
+            },
+            y: {
+              title: { display: true, text: "L' (N/m)", color: '#e0e0e0' },
+              ticks: { color: '#aaa' },
+              grid: { color: '#444' }
+            }
+          }
+        }
+      });
+
+      xflrMomentChart = new Chart(momCanvas, {
+        type: 'line',
+        data: {
+          datasets: [
+            {
+              label: "Pitching moment per span M' from CmGeom (N·m/m)",
+              data: mGeomPoints,
+              borderColor: 'rgb(33, 150, 243)',
+              backgroundColor: 'rgba(33, 150, 243, 0.10)',
+              tension: 0.05,
+              pointRadius: 0
+            },
+            {
+              label: "Pitching moment per span M' from CmAirf@c/4 (N·m/m)",
+              data: mAirfPoints,
+              borderColor: 'rgb(255, 152, 0)',
+              backgroundColor: 'rgba(255, 152, 0, 0.10)',
+              tension: 0.05,
+              pointRadius: 0
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          parsing: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            title: { display: true, text: 'Pitching moment per span', color: '#4CAF50' },
+            legend: { display: true, position: 'top', labels: { color: '#e0e0e0' } }
+          },
+          scales: {
+            x: {
+              type: 'linear',
+              title: { display: true, text: 'Station y (m)', color: '#e0e0e0' },
+              ticks: { color: '#aaa' },
+              grid: { color: '#444' }
+            },
+            y: {
+              title: { display: true, text: "M' (N·m/m)", color: '#e0e0e0' },
+              ticks: { color: '#aaa' },
+              grid: { color: '#444' }
+            }
+          }
+        }
+      });
+
+      xflrBendingChart = new Chart(bendCanvas, {
+        type: 'line',
+        data: {
+          datasets: [{
+            label: 'Bending moment (BM)',
+            data: bmPoints,
+            borderColor: 'rgb(244, 67, 54)',
+            backgroundColor: 'rgba(244, 67, 54, 0.10)',
+            tension: 0.05,
+            pointRadius: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          parsing: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            title: { display: true, text: 'Bending moment (XFLR BM column)', color: '#4CAF50' },
+            legend: { display: true, position: 'top', labels: { color: '#e0e0e0' } }
+          },
+          scales: {
+            x: {
+              type: 'linear',
+              title: { display: true, text: 'Station y (m)', color: '#e0e0e0' },
+              ticks: { color: '#aaa' },
+              grid: { color: '#444' }
+            },
+            y: {
+              title: { display: true, text: 'BM', color: '#e0e0e0' },
+              ticks: { color: '#aaa' },
+              grid: { color: '#444' }
+            }
+          }
+        }
+      });
+    }
+
+    function initXflrLoadsTab() {
+      if (xflrLoadsInitialized) return;
+      xflrLoadsInitialized = true;
+
+      const caseSel = document.getElementById('xflrCaseSelect');
+      const surfSel = document.getElementById('xflrSurfaceSelect');
+      const copyBtn = document.getElementById('xflrCopyCsvBtn');
+      const dlBtn = document.getElementById('xflrDownloadCsvBtn');
+
+      const cases = getXflrCases();
+      if (!cases.length) {
+        setXflrMessage('No XFLR loads found in this run (expected output/<run>/XFLR/*_a=*_v=*ms.txt).');
+        if (caseSel) caseSel.disabled = true;
+        if (surfSel) surfSel.disabled = true;
+        if (copyBtn) copyBtn.disabled = true;
+        if (dlBtn) dlBtn.disabled = true;
+        return;
+      }
+
+      populateXflrSelectors();
+
+      function currentStations() {
+        const c = getSelectedXflrCase();
+        if (!c) return { stations: [], meta: {} };
+        const sName = getSelectedXflrSurface(c);
+        const surf = sName ? (c.surfaces || {})[sName] : null;
+        return {
+          stations: (surf && surf.stations) ? surf.stations : [],
+          meta: { ...c, surface: sName }
+        };
+      }
+
+      if (caseSel) {
+        caseSel.addEventListener('change', () => {
+          updateXflrSurfaceOptions();
+          renderXflrLoads();
+        });
+      }
+      if (surfSel) {
+        surfSel.addEventListener('change', () => {
+          renderXflrLoads();
+        });
+      }
+
+      if (copyBtn) {
+        copyBtn.addEventListener('click', async () => {
+          const { stations, meta } = currentStations();
+          const tsv = buildXflrTsv(stations, meta);
+          const ok = await copyTextToClipboard(tsv);
+          if (ok) {
+            setXflrMessage('Copied (TSV). Paste into Google Sheets (cell A1).');
+          } else {
+            setXflrMessage('Clipboard blocked by browser. Data shown below—select all and copy.');
+            fallbackShowCsv(tsv);
+          }
+        });
+      }
+
+      if (dlBtn) {
+        dlBtn.addEventListener('click', () => {
+          const { stations, meta } = currentStations();
+          const csv = buildXflrCsv(stations, meta, false);
+          const fname = safeFilename(`xflr_loads_${meta.id}_${meta.surface}.csv`);
+          downloadCsv(csv, fname);
+        });
+      }
+
+      renderXflrLoads();
+    }
+
+    // Tab switching
+    document.querySelectorAll('.tab-button').forEach(button => {
+      button.addEventListener('click', () => {
+        const tabId = button.getAttribute('data-tab');
+
+        document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+        button.classList.add('active');
+        const tabContent = document.getElementById(`tab-${tabId}`);
+        if (tabContent) {
+          tabContent.classList.add('active');
+          if (tabId === 'power') {
+            // allow layout to settle before Chart.js init
+            setTimeout(() => {
+              initEnergyBalanceChart();
+              initSensitivityCharts();
+            }, 50);
+          }
+          if (tabId === 'loads') {
+            // allow layout to settle before Chart.js init
+            setTimeout(() => initXflrLoadsTab(), 50);
+          }
+        }
+      });
+    });
   </script>
 </body>
 </html>
