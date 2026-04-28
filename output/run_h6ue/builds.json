@@ -1,0 +1,25 @@
+[
+  {
+    "name": "Mojave 1",
+    "masses": {
+      "mass_solar_cells": 0.6214830309066142,
+      "mass_power_board": 0.1,
+      "mass_batteries": 3.8947368810483565,
+      "mass_wires": 0.09557183498320253,
+      "mass_avionics": 0.3,
+      "mass_servos": 0.08,
+      "mass_motors_mounted": 0.6050000000000001,
+      "mass_escs": 0.06,
+      "mass_propellers": 0.11,
+      "mass_main_wing": 2.5685452923817342,
+      "mass_hstab": 0.16686927629774873,
+      "mass_vstab": 0.1427659307582771,
+      "mass_boom": 0.16624542880628257,
+      "mass_fuselages": 0.2,
+      "mass_superstructures": 0.2,
+      "mass_boom_vstab_interfaces": 0.1,
+      "mass_vstab_stab_interfaces": 0.06
+    }
+  }
+]
+

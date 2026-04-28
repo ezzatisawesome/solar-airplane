@@ -100,6 +100,12 @@ def _row(label: str, value: str) -> str:
     return f"<tr><td><b>{_h(label)}:</b></td><td>{value}</td></tr>"
 
 
+def _row_multi(columns: List[str]) -> str:
+    """Create a table row with multiple columns."""
+    cells = "".join(f"<td>{col}</td>" for col in columns)
+    return f"<tr>{cells}</tr>"
+
+
 def _fmt(v: Any, fmt: str, default: float = 0.0, suffix: str = "") -> str:
     """Format numeric value with fallback."""
     return f"{_num(v, default):{fmt}}{suffix}"
@@ -208,6 +214,43 @@ def load_energy_balance_csv(run_dir: Path) -> Optional[JSONDict]:
         "power_used_W": p_used,
         "battery_state_Wh": batt_Wh,
     }
+
+
+def load_sensitivity_analysis_json(run_dir: Path) -> Optional[JSONDict]:
+    """
+    Load sensitivity analysis JSON and return data for embedding.
+    
+    Looks for sensitivity_analysis.json first, then falls back to energy_balance_summary.json.
+    """
+    candidates = [
+        run_dir / "sensitivity_analysis.json",
+        run_dir / "analysis" / "sensitivity_analysis.json",
+    ]
+    json_path = next((p for p in candidates if p.exists()), None)
+    
+    if json_path is None:
+        # Try loading from energy_balance_summary.json
+        summary_candidates = [
+            run_dir / "energy_balance_summary.json",
+            run_dir / "analysis" / "energy_balance_summary.json",
+        ]
+        summary_path = next((p for p in summary_candidates if p.exists()), None)
+        if summary_path:
+            try:
+                with summary_path.open("r", encoding="utf-8") as f:
+                    summary = json.load(f)
+                sensitivity_data = summary.get("sensitivity_analysis")
+                if sensitivity_data:
+                    return sensitivity_data
+            except Exception:
+                pass
+        return None
+    
+    try:
+        with json_path.open("r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
 
 
 # ----------------------------
@@ -476,10 +519,115 @@ def load_xflr_loads(run_dir: Path, soln: Mapping[str, Any]) -> Optional[JSONDict
 
 
 # ----------------------------
+# Mass Override / Build Helpers
+# ----------------------------
+
+def load_mass_updates(run_dir: Path) -> Dict[str, float]:
+    """Legacy loader for mass_updates.json (kept for backward compatibility)."""
+    update_path = run_dir / "mass_updates.json"
+    if not update_path.exists():
+        return {}
+    
+    try:
+        with open(update_path, "r", encoding="utf-8") as f:
+            updates = json.load(f)
+        # Validate and convert to float, filtering out invalid values
+        result: Dict[str, float] = {}
+        for key, value in updates.items():
+            try:
+                val = float(value)
+                if val >= 0 and math.isfinite(val):
+                    result[key] = val
+            except (TypeError, ValueError):
+                continue
+        return result
+    except (json.JSONDecodeError, IOError) as e:
+        print(f"[warning] Could not load mass updates from {update_path}: {e}")
+        return {}
+
+
+def load_builds(run_dir: Path) -> Tuple[Optional[str], Dict[str, float]]:
+    """
+    Load mass builds from builds.json (preferred) or fall back to mass_updates.json.
+    
+    Expected new format (either of these):
+      1) [
+           { "name": "Mojave 1", "masses": { "mass_solar_cells": 0.62, ... } }
+         ]
+      2) { "builds": [ { "name": "Mojave 1", "masses": { ... } } ] }
+    """
+    builds_path = run_dir / "builds.json"
+    build_name: Optional[str] = None
+    updates: Dict[str, float] = {}
+
+    if builds_path.exists():
+        try:
+            with open(builds_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            # Support both top-level list and {"builds": [...]} container
+            if isinstance(data, dict):
+                builds = data.get("builds") or []
+            else:
+                builds = data or []
+
+            if isinstance(builds, dict):
+                builds = [builds]
+
+            if isinstance(builds, list) and builds:
+                first = builds[0] or {}
+                if isinstance(first, dict):
+                    build_name = str(first.get("name") or "Mojave 1")
+                    raw_updates = first.get("masses") or first.get("mass_updates") or {}
+                    # If masses block missing, allow mass_* keys at top level
+                    if not raw_updates:
+                        raw_updates = {k: v for k, v in first.items() if k.startswith("mass_")}
+
+                    for key, value in raw_updates.items():
+                        try:
+                            val = float(value)
+                            if val >= 0 and math.isfinite(val):
+                                updates[key] = val
+                        except (TypeError, ValueError):
+                            continue
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"[warning] Could not load builds from {builds_path}: {e}")
+
+        return build_name, updates
+
+    # Fallback: legacy mass_updates.json behaviour
+    legacy_updates = load_mass_updates(run_dir)
+    if legacy_updates:
+        build_name = "Mojave 1"
+        updates = legacy_updates
+    return build_name, updates
+
+
+def calculate_mass_changes(original: Dict[str, float], updates: Dict[str, float]) -> Dict[str, Dict[str, float]]:
+    """Calculate deltas and percentages for mass components."""
+    changes = {}
+    for key, orig_val in original.items():
+        update_val = updates.get(key, orig_val)
+        delta = update_val - orig_val
+        if orig_val != 0:
+            pct_change = (delta / orig_val) * 100.0
+        else:
+            pct_change = 0.0 if delta == 0 else float("inf") if delta > 0 else float("-inf")
+        
+        changes[key] = {
+            "original": orig_val,
+            "update": update_val,
+            "delta": delta,
+            "pct_change": pct_change,
+        }
+    return changes
+
+
+# ----------------------------
 # Specs HTML
 # ----------------------------
 
-def format_specs_html(soln: Mapping[str, Any], mass_properties: Mapping[str, Any]) -> str:
+def format_specs_html(soln: Mapping[str, Any], mass_properties: Mapping[str, Any], run_dir: Optional[Path] = None) -> str:
     """Format aircraft specifications as HTML."""
     meta = soln.get("Meta", {}) or {}
     perf = soln.get("Performance", {}) or {}
@@ -613,28 +761,148 @@ def format_specs_html(soln: Mapping[str, Any], mass_properties: Mapping[str, Any
         _row("Izz", _fmt(total.get("Izz"), ".3f", suffix=" kg·m²")),
     ]))
 
+    build_name: Optional[str] = None
     if masses:
-        masses_rows = [
-            _row("Solar Cells", _fmt(masses.get("mass_solar_cells"), ".3f", suffix=" kg")),
-            _row("Power Board", _fmt(masses.get("mass_power_board"), ".3f", suffix=" kg")),
-            _row("Batteries", _fmt(masses.get("mass_batteries"), ".3f", suffix=" kg")),
-            _row("Wires", _fmt(masses.get("mass_wires"), ".3f", suffix=" kg")),
-            _row("Avionics", _fmt(masses.get("mass_avionics"), ".3f", suffix=" kg")),
-            _row("Servos", _fmt(masses.get("mass_servos"), ".3f", suffix=" kg")),
-            _row("Motors (Mounted)", _fmt(masses.get("mass_motors_mounted"), ".3f", suffix=" kg")),
-            _row("ESCs", _fmt(masses.get("mass_escs"), ".3f", suffix=" kg")),
-            _row("Propellers", _fmt(masses.get("mass_propellers"), ".3f", suffix=" kg")),
-            _row("Main Wing", _fmt(masses.get("mass_main_wing"), ".3f", suffix=" kg")),
-            _row("Horizontal Stabilizer", _fmt(masses.get("mass_hstab"), ".3f", suffix=" kg")),
-            _row("Vertical Stabilizer", _fmt(masses.get("mass_vstab"), ".3f", suffix=" kg")),
-            _row("Boom", _fmt(masses.get("mass_boom"), ".3f", suffix=" kg")),
-            _row("Fuselages", _fmt(masses.get("mass_fuselages"), ".3f", suffix=" kg")),
-            _row("Superstructures", _fmt(masses.get("mass_superstructures"), ".3f", suffix=" kg")),
-            _row("Boom-VStab Interfaces", _fmt(masses.get("mass_boom_vstab_interfaces"), ".3f", suffix=" kg")),
-            _row("VStab-HStab Interfaces", _fmt(masses.get("mass_vstab_stab_interfaces"), ".3f", suffix=" kg")),
-            _row("Total Mass", _fmt(masses.get("total_mass"), ".3f", suffix=" kg")),
+        # Load mass builds/updates if run_dir is provided
+        updates: Dict[str, float] = {}
+        changes: Dict[str, Dict[str, float]] = {}
+        if run_dir:
+            build_name, updates = load_builds(run_dir)
+            # Convert masses dict to float dict for calculation
+            original_masses = {k: _num(v) for k, v in masses.items() if k.startswith("mass_")}
+            changes = calculate_mass_changes(original_masses, updates)
+        
+        # Mass component mapping: display name -> key in soln.json
+        mass_components = [
+            ("Solar Cells", "mass_solar_cells"),
+            ("Power Board", "mass_power_board"),
+            ("Batteries", "mass_batteries"),
+            ("Wires", "mass_wires"),
+            ("Avionics", "mass_avionics"),
+            ("Servos", "mass_servos"),
+            ("Motors (Mounted)", "mass_motors_mounted"),
+            ("ESCs", "mass_escs"),
+            ("Propellers", "mass_propellers"),
+            ("Main Wing", "mass_main_wing"),
+            ("Horizontal Stabilizer", "mass_hstab"),
+            ("Vertical Stabilizer", "mass_vstab"),
+            ("Boom", "mass_boom"),
+            ("Fuselages", "mass_fuselages"),
+            ("Superstructures", "mass_superstructures"),
+            ("Boom-VStab Interfaces", "mass_boom_vstab_interfaces"),
+            ("VStab-HStab Interfaces", "mass_vstab_stab_interfaces"),
         ]
-        tab_contents["mass"].append(_section("Masses Breakdown", masses_rows))
+        
+        # Build table with header
+        run_name = _h(str(meta.get("run_id", "Original"))) if meta else "Original"
+        build_label = _h(build_name or "Mojave 1")
+        table_html = "<h3>Masses Breakdown</h3>"
+        table_html += "<table style='width: 100%; border-collapse: collapse;'>"
+        table_html += "<thead style='background: rgba(255,255,255,0.06);'>"
+        table_html += _row_multi([
+            "<b>Component</b>",
+            f"<b>{run_name} (kg)</b>",
+            f"<b>{build_label} (kg)</b>",
+            "<b>Delta (kg)</b>",
+            "<b>% Change</b>"
+        ])
+        table_html += "</thead>"
+        table_html += "<tbody>"
+        
+        for display_name, key in mass_components:
+            orig_val = _num(masses.get(key, 0))
+            if key in changes:
+                change = changes[key]
+                update_val = change["update"]
+                delta = change["delta"]
+                pct = change["pct_change"]
+            else:
+                update_val = orig_val
+                delta = 0.0
+                pct = 0.0
+            
+            # Format delta with color coding
+            if abs(delta) < 0.001:
+                delta_str = _fmt(delta, ".3f", suffix=" kg")
+            else:
+                color = "rgb(244, 67, 54)" if delta > 0 else "rgb(76, 175, 80)"
+                delta_str = f"<span style='color: {color};'>{_fmt(delta, '.3f', suffix=' kg')}</span>"
+            
+            # Format percentage with color coding
+            if abs(pct) < 0.01:
+                pct_str = _fmt(pct, ".2f", suffix="%")
+            else:
+                color = "rgb(244, 67, 54)" if pct > 0 else "rgb(76, 175, 80)"
+                sign = "+" if pct > 0 else ""
+                pct_str = f"<span style='color: {color};'>{sign}{_fmt(pct, '.2f', suffix='%')}</span>"
+            
+            table_html += _row_multi([
+                f"<b>{_h(display_name)}</b>",
+                _fmt(orig_val, ".3f", suffix=" kg"),
+                _fmt(update_val, ".3f", suffix=" kg"),
+                delta_str,
+                pct_str
+            ])
+        
+        # Total mass row
+        total_orig = _num(masses.get("total_mass", 0))
+        if changes:
+            # Recalculate total from component updates
+            component_keys = [key for _, key in mass_components]
+            total_update = sum(changes.get(k, {}).get("update", _num(masses.get(k, 0))) 
+                               for k in component_keys)
+            total_delta = total_update - total_orig
+            total_pct = (total_delta / total_orig * 100.0) if total_orig != 0 else 0.0
+        else:
+            total_update = total_orig
+            total_delta = 0.0
+            total_pct = 0.0
+        
+        if abs(total_delta) < 0.001:
+            total_delta_str = _fmt(total_delta, ".3f", suffix=" kg")
+        else:
+            color = "rgb(244, 67, 54)" if total_delta > 0 else "rgb(76, 175, 80)"
+            total_delta_str = f"<span style='color: {color};'>{_fmt(total_delta, '.3f', suffix=' kg')}</span>"
+        
+        if abs(total_pct) < 0.01:
+            total_pct_str = _fmt(total_pct, ".2f", suffix="%")
+        else:
+            color = "rgb(244, 67, 54)" if total_pct > 0 else "rgb(76, 175, 80)"
+            sign = "+" if total_pct > 0 else ""
+            total_pct_str = f"<span style='color: {color};'>{sign}{_fmt(total_pct, '.2f', suffix='%')}</span>"
+        
+        table_html += _row_multi([
+            f"<b>{_h('Total Mass')}</b>",
+            _fmt(total_orig, ".3f", suffix=" kg"),
+            _fmt(total_update, ".3f", suffix=" kg"),
+            total_delta_str,
+            total_pct_str
+        ])
+        
+        table_html += "</tbody>"
+        table_html += "</table>"
+        tab_contents["mass"].append(table_html)
+        
+        # Add dual pie chart section: baseline run vs build masses
+        tab_contents["mass"].append(
+            "<div style='margin-top: 20px; padding-top: 15px; border-top: 2px solid #444;'>"
+            "<h4 style='margin-bottom: 12px; color: #4CAF50;'>Mass Distribution</h4>"
+            "<div style='display:flex; flex-wrap:wrap; gap:16px;'>"
+            "  <div style='flex:1 1 260px; min-width:240px;'>"
+            "    <div id='massPieLabelOriginal' style='color:#e0e0e0; font-size:13px; margin-bottom:6px;'></div>"
+            "    <div style='position: relative; height: 260px; width: 100%; max-height: 260px; overflow: hidden;'>"
+            "      <canvas id='massPieChartOriginal' style='max-height: 260px;'></canvas>"
+            "    </div>"
+            "  </div>"
+            "  <div style='flex:1 1 260px; min-width:240px;'>"
+            "    <div id='massPieLabelBuild' style='color:#e0e0e0; font-size:13px; margin-bottom:6px;'></div>"
+            "    <div style='position: relative; height: 260px; width: 100%; max-height: 260px; overflow: hidden;'>"
+            "      <canvas id='massPieChartBuild' style='max-height: 260px;'></canvas>"
+            "    </div>"
+            "  </div>"
+            "</div>"
+            "</div>"
+        )
 
     # Power tab
     if power:
@@ -666,88 +934,30 @@ def format_specs_html(soln: Mapping[str, Any], mass_properties: Mapping[str, Any
                 "</div>"
             )
 
-    # Energy balance container (always include; JS will show message if missing)
-    tab_contents["power"].append(
-        "<div style='margin-top: 20px; padding-top: 15px; border-top: 2px solid #444;'>"
-        "<h4 style='margin-bottom: 10px; color: #4CAF50;'>Energy Balance Analysis</h4>"
-        "<div style='position: relative; height: 300px; width: 100%; max-height: 300px; overflow: hidden;'>"
-        "<canvas id='energyBalanceChart' style='max-height: 300px;'></canvas>"
-        "</div>"
-        "</div>"
-    )
-
-    # Sensitivity analysis (dropdown + 48h chart for each variable)
+    # Sensitivity analysis: single chart with variable + delta dropdowns
     tab_contents["power"].append(
         "<div style='margin-top: 20px; padding-top: 15px; border-top: 2px solid #444;'>"
         "<h4 style='margin-bottom: 10px; color: #4CAF50;'>Sensitivity Analysis (48h)</h4>"
-        "<div style='color:#aaa; font-size:12px; margin-bottom:10px;'>Select a delta for each variable to re-run the 48-hour energy balance in-browser (based on the embedded baseline time series).</div>"
-        "<div id='sensGrid' style='display:grid; grid-template-columns: 1fr; gap: 18px;'>"
-
-        # Weight
-        "<div style='border:1px solid #333; border-radius:10px; padding:12px; background:rgba(0,0,0,0.12);'>"
-        "  <div style='display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;'>"
-        "    <div style='font-weight:600; color:#e0e0e0;'>Weight</div>"
-        "    <select id='sensSel_weight' style='padding:6px 8px; background:#222; color:#e0e0e0; border:1px solid #444; border-radius:6px;'></select>"
-        "  </div>"
-        "  <div style='position:relative; height:320px; width:100%; margin-top:10px; overflow:hidden;'><canvas id='sensChart_weight'></canvas></div>"
+        "<div style='color:#aaa; font-size:12px; margin-bottom:10px;'>"
+        "Select which variable to perturb and the magnitude of the change, then the 48-hour energy balance "
+        "will be re-plotted using the pre-computed sensitivity data."
         "</div>"
-
-        # Drag
-        "<div style='border:1px solid #333; border-radius:10px; padding:12px; background:rgba(0,0,0,0.12);'>"
-        "  <div style='display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;'>"
-        "    <div style='font-weight:600; color:#e0e0e0;'>Drag</div>"
-        "    <select id='sensSel_drag' style='padding:6px 8px; background:#222; color:#e0e0e0; border:1px solid #444; border-radius:6px;'></select>"
-        "  </div>"
-        "  <div style='position:relative; height:320px; width:100%; margin-top:10px; overflow:hidden;'><canvas id='sensChart_drag'></canvas></div>"
+        "<div style='display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:10px;'>"
+        "  <label style='display:flex; flex-direction:column; gap:4px; font-size:12px;'>"
+        "    <span style='color:#e0e0e0; font-weight:600;'>Variable</span>"
+        "    <select id='sensVarSelect' style='padding:6px 8px; background:#222; color:#e0e0e0; border:1px solid #444; border-radius:6px; min-width:180px;'></select>"
+        "  </label>"
+        "  <label style='display:flex; flex-direction:column; gap:4px; font-size:12px;'>"
+        "    <span id='sensDeltaLabel' style='color:#e0e0e0; font-weight:600;'>Change</span>"
+        "    <select id='sensDeltaSelect' style='padding:6px 8px; background:#222; color:#e0e0e0; border:1px solid #444; border-radius:6px; min-width:140px;'></select>"
+        "  </label>"
         "</div>"
-
-        # Solar (irradiance availability)
-        "<div style='border:1px solid #333; border-radius:10px; padding:12px; background:rgba(0,0,0,0.12);'>"
-        "  <div style='display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;'>"
-        "    <div style='font-weight:600; color:#e0e0e0;'>Solar (Irradiance)</div>"
-        "    <select id='sensSel_solar' style='padding:6px 8px; background:#222; color:#e0e0e0; border:1px solid #444; border-radius:6px;'></select>"
-        "  </div>"
-        "  <div style='position:relative; height:320px; width:100%; margin-top:10px; overflow:hidden;'><canvas id='sensChart_solar'></canvas></div>"
+        "<div style='position:relative; height:340px; width:100%; margin-top:5px; overflow:hidden;'>"
+        "  <canvas id='sensChart_main'></canvas>"
         "</div>"
-
-        # Cell efficiency
-        "<div style='border:1px solid #333; border-radius:10px; padding:12px; background:rgba(0,0,0,0.12);'>"
-        "  <div style='display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;'>"
-        "    <div style='font-weight:600; color:#e0e0e0;'>Solar Cell Efficiency</div>"
-        "    <select id='sensSel_cellEff' style='padding:6px 8px; background:#222; color:#e0e0e0; border:1px solid #444; border-radius:6px;'></select>"
-        "  </div>"
-        "  <div style='position:relative; height:320px; width:100%; margin-top:10px; overflow:hidden;'><canvas id='sensChart_cellEff'></canvas></div>"
+        "<div style='color:#888; font-size:11px; margin-top:6px;'>"
+        "Note: CG shift is modeled as an electrical power penalty proportional to |shift|; this can be tuned in the JS."
         "</div>"
-
-        # Solar power (panel count/area proxy)
-        "<div style='border:1px solid #333; border-radius:10px; padding:12px; background:rgba(0,0,0,0.12);'>"
-        "  <div style='display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;'>"
-        "    <div style='font-weight:600; color:#e0e0e0;'>Solar Power (Panel/Area Proxy)</div>"
-        "    <select id='sensSel_solarPower' style='padding:6px 8px; background:#222; color:#e0e0e0; border:1px solid #444; border-radius:6px;'></select>"
-        "  </div>"
-        "  <div style='position:relative; height:320px; width:100%; margin-top:10px; overflow:hidden;'><canvas id='sensChart_solarPower'></canvas></div>"
-        "</div>"
-
-        # Motor efficiency
-        "<div style='border:1px solid #333; border-radius:10px; padding:12px; background:rgba(0,0,0,0.12);'>"
-        "  <div style='display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;'>"
-        "    <div style='font-weight:600; color:#e0e0e0;'>Motor Efficiency</div>"
-        "    <select id='sensSel_motorEff' style='padding:6px 8px; background:#222; color:#e0e0e0; border:1px solid #444; border-radius:6px;'></select>"
-        "  </div>"
-        "  <div style='position:relative; height:320px; width:100%; margin-top:10px; overflow:hidden;'><canvas id='sensChart_motorEff'></canvas></div>"
-        "</div>"
-
-        # CG shift
-        "<div style='border:1px solid #333; border-radius:10px; padding:12px; background:rgba(0,0,0,0.12);'>"
-        "  <div style='display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;'>"
-        "    <div style='font-weight:600; color:#e0e0e0;'>Center of Gravity Shift</div>"
-        "    <select id='sensSel_cg' style='padding:6px 8px; background:#222; color:#e0e0e0; border:1px solid #444; border-radius:6px;'></select>"
-        "  </div>"
-        "  <div style='position:relative; height:320px; width:100%; margin-top:10px; overflow:hidden;'><canvas id='sensChart_cg'></canvas></div>"
-        "  <div style='color:#888; font-size:11px; margin-top:6px;'>CG shift is modeled as an electrical power penalty proportional to |shift| (edit the coefficient in JS).</div>"
-        "</div>"
-
-        "</div>"  # sensGrid
         "</div>"
     )
 
@@ -1146,7 +1356,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     const massProperties = {mass_properties_json};
     const airplaneGeometry = {airplane_geometry_json};
     const energyBalanceData = {energy_balance_data_json};
+    const sensitivityAnalysisData = {sensitivity_analysis_json};
     const xflrLoadsData = {xflr_loads_data_json};
+    const massChartData = {mass_chart_data_json};
 
     const batteryStates = soln.Power?.battery_states || null;
     const batteryCapacity = soln.Power?.battery_capacity || 0;
@@ -1662,17 +1874,30 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const tabContent = canvas.closest('.tab-content');
       if (!tabContent || !tabContent.classList.contains('active')) return;
 
-      if (!energyBalanceData) {{
+      if (!energyBalanceData && !sensitivityAnalysisData) {{
         const parent = canvas.parentElement;
-        parent.innerHTML = "<div style='color:#aaa; font-size:13px; padding:10px; border:1px dashed #555; border-radius:6px;'>No energy balance data found (energy_balance_data.csv).</div>";
+        parent.innerHTML = "<div style='color:#aaa; font-size:13px; padding:10px; border:1px dashed #555; border-radius:6px;'>No energy balance data found.</div>";
         return;
       }}
 
-      // Build a *physically consistent* baseline series by re-integrating the battery energy
-      // from the power balance. The embedded CSV battery_state_Wh may include discontinuities
-      // (e.g. solver resets / saturation), which can appear as impossible charge spikes.
-      // This keeps the baseline plot consistent with the sensitivity plots (including 0%).
-      const series48 = makeVariantSeries('weight', 0);
+      // Use the same helper as the sensitivity charts so the baseline matches the sensitivity 0% case.
+      // Prefer an explicit 0-perturbation weight variant if available; otherwise fall back to baseline.
+      let series48 = null;
+      if (sensitivityAnalysisData && sensitivityAnalysisData.weight && sensitivityAnalysisData.weight["0"]) {{
+        series48 = expandTo48h(sensitivityAnalysisData.weight["0"]);
+      }} else if (energyBalanceData) {{
+        series48 = expandTo48h(energyBalanceData);
+      }} else {{
+        series48 = {{
+          time_hr: [],
+          period_type: [],
+          solar_flux_W_per_m2: [],
+          power_generated_W: [],
+          power_used_W: [],
+          battery_state_Wh: [],
+        }};
+      }}
+
       const timeHours = series48.time_hr || [];
       const periodType = series48.period_type || [];
       const powerGenerated = series48.power_generated_W || [];
@@ -1854,107 +2079,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }}
     }}
 
-    function clamp(x, lo, hi) {{ return Math.max(lo, Math.min(hi, x)); }}
-
-    function estimateBatteryPowerLimits(timeHours, Eseries) {{
-      // Estimate effective charge/discharge power limits from a baseline energy trace.
-      // Uses finite differences dE/dt (Wh/hr == W) and returns conservative (95th percentile) limits.
-      if (!timeHours || !Eseries || timeHours.length < 3 || Eseries.length !== timeHours.length) {{
-        return {{ maxChargeW: Infinity, maxDischargeW: Infinity }};
-      }}
-      const rates = [];
-      for (let i = 0; i < timeHours.length - 1; i++) {{
-        const t0 = Number(timeHours[i]);
-        const t1 = Number(timeHours[i + 1]);
-        const dt = t1 - t0;
-        if (!(dt > 1e-9)) continue;
-        const e0 = Number(Eseries[i]);
-        const e1 = Number(Eseries[i + 1]);
-        if (!isFinite(e0) || !isFinite(e1)) continue;
-        rates.push((e1 - e0) / dt); // W
-      }}
-      if (!rates.length) return {{ maxChargeW: Infinity, maxDischargeW: Infinity }};
-      const pos = rates.filter(r => isFinite(r) && r > 0).sort((a,b)=>a-b);
-      const neg = rates.filter(r => isFinite(r) && r < 0).map(r => -r).sort((a,b)=>a-b); // magnitudes
-      const q = (arr, p) => {{
-        if (!arr.length) return Infinity;
-        const idx = Math.min(arr.length - 1, Math.max(0, Math.floor(p * (arr.length - 1))));
-        return arr[idx];
-      }};
-      // 95th percentile to avoid one-off numerical artifacts
-      const maxChargeW = q(pos, 0.95);
-      const maxDischargeW = q(neg, 0.95);
-      return {{
-        maxChargeW: (isFinite(maxChargeW) && maxChargeW > 0) ? maxChargeW : Infinity,
-        maxDischargeW: (isFinite(maxDischargeW) && maxDischargeW > 0) ? maxDischargeW : Infinity
-      }};
-    }}
-
-    function integrateBattery(timeHours, pGen, pUse, E0, capWh, limits) {{
-      // Robust integration of battery energy (Wh) from power balance (W).
-      // - trapezoidal rule (reduces stair-step artifacts)
-      // - optional charge/discharge power limits (inferred from baseline curve)
-      // - efficiency + saturation behavior without "energy injection" spikes
-      const n = (timeHours || []).length;
-      const E = new Array(n).fill(0);
-      if (n === 0) return E;
-
-      const etaCharge = 0.98;     // simple lumped charge efficiency
-      const etaDischarge = 0.98;  // lumped discharge efficiency
-      const maxChargeW = (limits && isFinite(limits.maxChargeW)) ? limits.maxChargeW : Infinity;
-      const maxDischargeW = (limits && isFinite(limits.maxDischargeW)) ? limits.maxDischargeW : Infinity;
-
-      E[0] = clamp(Number(E0) || 0, 0, capWh);
-
-      const netAt = (i) => {{
-        const g = Number(pGen[i]) || 0;
-        const u = Number(pUse[i]) || 0;
-        let net = g - u; // +charges battery, -discharges battery
-        // Apply power limits (pre-efficiency)
-        net = clamp(net, -maxDischargeW, maxChargeW);
-        return net;
-      }};
-
-      for (let i = 0; i < n - 1; i++) {{
-        const t0 = Number(timeHours[i]);
-        const t1 = Number(timeHours[i + 1]);
-        let dt = t1 - t0; // hours
-        if (!(dt > 0)) {{
-          E[i + 1] = E[i];
-          continue;
-        }}
-
-        let net0 = netAt(i);
-        let net1 = netAt(i + 1);
-        // Trapezoid average power
-        let netAvg = 0.5 * (net0 + net1);
-
-        // Efficiency: charging stores less than electrical surplus; discharging removes more than load deficit.
-        if (netAvg >= 0) {{
-          netAvg = netAvg * etaCharge;
-        }} else {{
-          netAvg = netAvg / etaDischarge;
-        }}
-
-        // Enforce saturation *continuously* (don't allow a single step to "teleport" past cap)
-        let next = E[i] + netAvg * dt;
-
-        if (next > capWh) {{
-          // If we're at/near full, surplus should be curtailed (no additional stored energy)
-          next = capWh;
-        }} else if (next < 0) {{
-          next = 0;
-        }}
-
-        E[i + 1] = next;
-      }}
-      return E;
-    }}
-
 
     // Builds a chart visually consistent with your existing energy balance plot,
     // plus an optional Solar Flux dataset on a third axis (to match your "bottom of page" 48h style).
-    function buildEnergyBalanceChart(canvasId, series, titleText) {{
+    // If baselineSeries is provided, it will be drawn alongside the main series for comparison.
+    function buildEnergyBalanceChart(canvasId, series, titleText, baselineSeries=null) {{
       const ZERO_PAD_WH = 20;   // ensures space past 0 Wh
       const ZERO_PAD_W  = 30;   // ensures space past 0 W
       const canvas = document.getElementById(canvasId);
@@ -1967,19 +2096,23 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const batteryState = series.battery_state_Wh || [];
       const solarFlux = series.solar_flux_W_per_m2 || [];
 
+      const basePowerGenerated = baselineSeries ? (baselineSeries.power_generated_W || []) : [];
+      const basePowerUsed = baselineSeries ? (baselineSeries.power_used_W || []) : [];
+      const baseBatteryState = baselineSeries ? (baselineSeries.battery_state_Wh || []) : [];
+      const baseSolarFlux = baselineSeries ? (baselineSeries.solar_flux_W_per_m2 || []) : [];
+
       if (!timeHours.length) return null;
 
-      // Axis ranges (same approach as initEnergyBalanceChart)
-      const validBatteryState = batteryState.filter(v => !isNaN(v) && isFinite(v));
+      // Axis ranges (same approach as initEnergyBalanceChart), including baseline if present
+      const allBatteryValues = [...batteryState, ...baseBatteryState].filter(v => !isNaN(v) && isFinite(v));
+      const validBatteryState = allBatteryValues;
       const battMin = validBatteryState.length > 0 ? Math.min(...validBatteryState) : 0;
       const battMax = validBatteryState.length > 0 ? Math.max(...validBatteryState) : 100;
       const battRange = battMax - battMin;
       const battPadding = Math.max(battRange * 0.15, ZERO_PAD_WH);
       const battYMin = Math.min(0 - ZERO_PAD_WH, battMin - battPadding);
       const battYMax = battMax + battPadding;
-
-
-      const allPowerValues = [...powerGenerated, ...powerUsed].filter(v => !isNaN(v) && isFinite(v));
+      const allPowerValues = [...powerGenerated, ...powerUsed, ...basePowerGenerated, ...basePowerUsed].filter(v => !isNaN(v) && isFinite(v));
       const powerMin = allPowerValues.length > 0 ? Math.min(...allPowerValues) : 0;
       const powerMax = allPowerValues.length > 0 ? Math.max(...allPowerValues) : 100;
       const powerRange = powerMax - powerMin;
@@ -2020,51 +2153,74 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         backgroundDatasets.push(createPeriodBackground('day', 'rgba(255, 250, 205, 0.15)'));
       }}
 
+      const datasets = [
+        ...backgroundDatasets,
+      ];
+
+      // Optional baseline series (drawn underneath with dashed lines).
+      // Only battery baseline is drawn to avoid cluttering the legend with extra power/flux entries.
+      if (baselineSeries) {{
+        datasets.push(
+          {{
+            label: 'Battery Energy (Base, Wh)',
+            data: baseBatteryState,
+            borderColor: 'rgba(33, 150, 243, 0.7)',
+            backgroundColor: 'rgba(33, 150, 243, 0.1)',
+            yAxisID: 'y',
+            tension: 0.1,
+            pointRadius: 0,
+            borderDash: [4, 3]
+          }}
+        );
+      }}
+
+      // Main (selected) series
+      datasets.push(
+        {{
+          label: 'Power Generated (W)',
+          data: powerGenerated,
+          borderColor: 'rgb(76, 175, 80)',
+          backgroundColor: 'rgba(76, 175, 80, 0.2)',
+          yAxisID: 'y1',
+          tension: 0.1,
+          pointRadius: 0
+        }},
+        {{
+          label: 'Power Used (W)',
+          data: powerUsed,
+          borderColor: 'rgb(244, 67, 54)',
+          backgroundColor: 'rgba(244, 67, 54, 0.2)',
+          yAxisID: 'y1',
+          tension: 0.1,
+          pointRadius: 0
+        }},
+        {{
+          label: 'Battery Energy (Wh)',
+          data: batteryState,
+          borderColor: 'rgb(33, 150, 243)',
+          backgroundColor: 'rgba(33, 150, 243, 0.2)',
+          yAxisID: 'y',
+          tension: 0.1,
+          pointRadius: 0
+        }},
+        // Solar flux (optional) to match your 48h "bottom of page" style
+        ...(solarFlux && solarFlux.length ? [{{
+          label: 'Solar Flux (W/m²)',
+          data: solarFlux,
+          borderColor: 'rgb(255, 152, 0)',
+          backgroundColor: 'rgba(255, 152, 0, 0.0)',
+          yAxisID: 'y2',
+          tension: 0.1,
+          pointRadius: 0,
+          borderDash: [6, 4]
+        }}] : [])
+      );
+
       return new Chart(canvas, {{
         type: 'line',
         data: {{
           labels: timeHours.map(t => Number(t).toFixed(2)),
-          datasets: [
-            ...backgroundDatasets,
-            {{
-              label: 'Power Generated (W)',
-              data: powerGenerated,
-              borderColor: 'rgb(76, 175, 80)',
-              backgroundColor: 'rgba(76, 175, 80, 0.2)',
-              yAxisID: 'y1',
-              tension: 0.1,
-              pointRadius: 0
-            }},
-            {{
-              label: 'Power Used (W)',
-              data: powerUsed,
-              borderColor: 'rgb(244, 67, 54)',
-              backgroundColor: 'rgba(244, 67, 54, 0.2)',
-              yAxisID: 'y1',
-              tension: 0.1,
-              pointRadius: 0
-            }},
-            {{
-              label: 'Battery Energy (Wh)',
-              data: batteryState,
-              borderColor: 'rgb(33, 150, 243)',
-              backgroundColor: 'rgba(33, 150, 243, 0.2)',
-              yAxisID: 'y',
-              tension: 0.1,
-              pointRadius: 0
-            }},
-            // Solar flux (optional) to match your 48h "bottom of page" style
-            ...(solarFlux && solarFlux.length ? [{{
-              label: 'Solar Flux (W/m²)',
-              data: solarFlux,
-              borderColor: 'rgb(255, 152, 0)',
-              backgroundColor: 'rgba(255, 152, 0, 0.0)',
-              yAxisID: 'y2',
-              tension: 0.1,
-              pointRadius: 0,
-              borderDash: [6, 4]
-            }}] : [])
-          ]
+          datasets
         }},
         options: {{
           responsive: true,
@@ -2115,68 +2271,31 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }});
     }}
 
-    // Map dropdown setting -> modified series
-    function makeVariantSeries(kind, selectionValue) {{
-      // Baseline
-      const base = expandTo48h(energyBalanceData);
-      const timeHours = base.time_hr || [];
-      const periodType = base.period_type || [];
-      const solarFlux = base.solar_flux_W_per_m2 || [];
-      const pGen0 = base.power_generated_W || [];
-      const pUse0 = base.power_used_W || [];
-      const E0_series = base.battery_state_Wh || [];
-
-      const batteryCapacity = (soln && soln.Power && soln.Power.battery_capacity) ? Number(soln.Power.battery_capacity) : null;
-      const E0 = E0_series.length ? Number(E0_series[0]) : (batteryCapacity || 0);
-
-      // Parse selection
-      // For percent dropdowns: -0.2, -0.1, 0, 0.1, 0.2
-      // For cg: centimeters integer, e.g. -40 .. +20
-      let pGen = pGen0.slice();
-      let pUse = pUse0.slice();
-
-      if (kind === 'weight' || kind === 'drag') {{
-        const delta = Number(selectionValue) || 0;
-        pUse = pUse0.map(v => (Number(v) || 0) * (1 + delta));
+    // Get pre-computed sensitivity variant series
+    function getVariantSeries(kind, selectionValue) {{
+      // Prefer explicit sensitivity data if present
+      if (sensitivityAnalysisData && sensitivityAnalysisData[kind]) {{
+        const kindData = sensitivityAnalysisData[kind] || {{}};
+        const variant = kindData[String(selectionValue)];
+        if (variant) {{
+          // Return pre-computed variant (may need to expand to 48h if only 24h)
+          return expandTo48h(variant);
+        }}
       }}
 
-      if (kind === 'solar' || kind === 'cellEff' || kind === 'solarPower') {{
-        const delta = Number(selectionValue) || 0;
-        pGen = pGen0.map(v => (Number(v) || 0) * (1 + delta));
+      // Fallback: use baseline energyBalanceData if available
+      if (energyBalanceData) {{
+        return expandTo48h(energyBalanceData);
       }}
 
-      if (kind === 'motorEff') {{
-        // Efficiency up => electrical power down. Use reciprocal scaling.
-        const delta = Number(selectionValue) || 0;
-        const scale = 1 / Math.max(0.2, (1 + delta)); // prevent divide-by-near-zero
-        pUse = pUse0.map(v => (Number(v) || 0) * scale);
-      }}
-
-      if (kind === 'cg') {{
-        const shift_cm = Number(selectionValue) || 0;
-        // Edit this coefficient to match your trim/drag model:
-        const penalty_per_cm = 0.002; // 0.2% electrical power per cm of |shift|
-        const scale = 1 + penalty_per_cm * Math.abs(shift_cm);
-        pUse = pUse0.map(v => (Number(v) || 0) * scale);
-      }}
-
-      const cap = batteryCapacity || Math.max(...(E0_series.length ? E0_series : [0]));
-
-      // Always (re-)integrate battery energy from the power balance, even at 0% delta.
-      // The embedded CSV battery_state_Wh can contain discontinuities (e.g. solver resets / saturation),
-      // which show up as impossible "teleport" charging spikes. Re-integration yields the smooth,
-      // rate-limited curve used for non-zero sensitivity values.
-      const limits = estimateBatteryPowerLimits(timeHours, E0_series);
-
-      const batt = integrateBattery(timeHours, pGen, pUse, E0, cap, limits);
-
+      // Last-resort safe empty series (avoids JS crashes if data is missing)
       return {{
-        time_hr: timeHours,
-        period_type: periodType,
-        solar_flux_W_per_m2: solarFlux,
-        power_generated_W: pGen,
-        power_used_W: pUse,
-        battery_state_Wh: batt
+        time_hr: [],
+        period_type: [],
+        solar_flux_W_per_m2: [],
+        power_generated_W: [],
+        power_used_W: [],
+        battery_state_Wh: [],
       }};
     }}
 
@@ -2218,66 +2337,87 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const powerTab = document.getElementById('tab-power');
       if (!powerTab || !powerTab.classList.contains('active')) return;
 
-      if (!energyBalanceData) return;
+      // Require sensitivity data; we can operate even if energyBalanceData is missing
+      if (!sensitivityAnalysisData) return;
 
-      // Populate selects once
-      fillPercentSelect('sensSel_weight');
-      fillPercentSelect('sensSel_drag');
-      fillPercentSelect('sensSel_solar');
-      fillPercentSelect('sensSel_cellEff');
-      fillPercentSelect('sensSel_solarPower');
-      fillPercentSelect('sensSel_motorEff');
-      fillCgSelect('sensSel_cg');
+      const varSelect = document.getElementById('sensVarSelect');
+      const deltaSelect = document.getElementById('sensDeltaSelect');
+      const deltaLabel = document.getElementById('sensDeltaLabel');
+      if (!varSelect || !deltaSelect || !deltaLabel) return;
 
-      const defs = [
-        {{ kind: 'weight', sel: 'sensSel_weight', canvas: 'sensChart_weight', title: 'Sensitivity: Weight' }},
-        {{ kind: 'drag', sel: 'sensSel_drag', canvas: 'sensChart_drag', title: 'Sensitivity: Drag' }},
-        {{ kind: 'solar', sel: 'sensSel_solar', canvas: 'sensChart_solar', title: 'Sensitivity: Solar (Irradiance)' }},
-        {{ kind: 'cellEff', sel: 'sensSel_cellEff', canvas: 'sensChart_cellEff', title: 'Sensitivity: Solar Cell Efficiency' }},
-        {{ kind: 'solarPower', sel: 'sensSel_solarPower', canvas: 'sensChart_solarPower', title: 'Sensitivity: Solar Power (Panel/Area Proxy)' }},
-        {{ kind: 'motorEff', sel: 'sensSel_motorEff', canvas: 'sensChart_motorEff', title: 'Sensitivity: Motor Efficiency' }},
-        {{ kind: 'cg', sel: 'sensSel_cg', canvas: 'sensChart_cg', title: 'Sensitivity: CG Shift' }}
+      // Define variables available for sensitivity (must match keys in sensitivityAnalysisData)
+      const varDefs = [
+        {{ kind: 'weight', label: 'Weight' }},
+        {{ kind: 'drag', label: 'Drag' }},
+        {{ kind: 'solar', label: 'Solar (Irradiance)' }},
+        {{ kind: 'cellEff', label: 'Solar Cell Efficiency' }},
+        {{ kind: 'solarPower', label: 'Solar Power (Panel/Area Proxy)' }},
+        {{ kind: 'motorEff', label: 'Motor Efficiency' }},
+        {{ kind: 'cg', label: 'Center of Gravity Shift' }},
       ];
 
-      function renderOne(d) {{
-        const sel = document.getElementById(d.sel);
-        const v = sel ? sel.value : '0';
+      // Populate variable select
+      varSelect.innerHTML = '';
+      for (const v of varDefs) {{
+        const el = document.createElement('option');
+        el.value = v.kind;
+        el.textContent = v.label;
+        varSelect.appendChild(el);
+      }}
+      // Default to weight
+      varSelect.value = 'weight';
 
-        const series = makeVariantSeries(d.kind, v);
+      function refreshDeltaOptions() {{
+        const kind = varSelect.value || 'weight';
+        if (kind === 'cg') {{
+          // Use CG-specific options (in cm)
+          fillCgSelect('sensDeltaSelect');
+          deltaLabel.textContent = 'CG Shift (cm)';
+        }} else {{
+          // Use generic percent deltas
+          fillPercentSelect('sensDeltaSelect');
+          deltaLabel.textContent = 'Change (%)';
+        }}
+      }}
 
-        // If chart exists, update it in-place
-        const ch = sensCharts[d.canvas];
-        if (ch) {{
-          ch.data.labels = series.time_hr.map(t => Number(t).toFixed(2));
+      function getCurrentSeries() {{
+        const kind = varSelect.value || 'weight';
+        const selVal = deltaSelect.value || '0';
+        const series = getVariantSeries(kind, selVal);
+        return {{ series, kind }};
+      }}
 
-          // Datasets order in buildEnergyBalanceChart:
-          // ...background, Power Gen, Power Used, Battery, Solar Flux (optional)
-          // Update by label to be safe:
-          for (const ds of ch.data.datasets) {{
-            if (ds.label === 'Power Generated (W)') ds.data = series.power_generated_W;
-            if (ds.label === 'Power Used (W)') ds.data = series.power_used_W;
-            if (ds.label === 'Battery Energy (Wh)') ds.data = series.battery_state_Wh;
-            if (ds.label === 'Solar Flux (W/m²)') ds.data = series.solar_flux_W_per_m2;
-          }}
+      let mainSensChart = null;
 
-          ch.update();
-          return;
+      function renderSensitivity() {{
+        const {{ series, kind }} = getCurrentSeries();
+        const varDef = varDefs.find(v => v.kind === kind) || varDefs[0];
+        const title = `Sensitivity: ${{varDef.label}}`;
+
+        // Baseline series: 0-perturbation for the same variable (or fallback inside getVariantSeries)
+        const baseSeries = getVariantSeries(kind, 0);
+
+        // Destroy any existing chart so we can rebuild with the new baseline + variant
+        if (mainSensChart) {{
+          try {{ mainSensChart.destroy(); }} catch (e) {{}}
+          mainSensChart = null;
         }}
 
-        // Otherwise create it once
-        sensCharts[d.canvas] = buildEnergyBalanceChart(d.canvas, series, d.title);
+        mainSensChart = buildEnergyBalanceChart('sensChart_main', series, title, baseSeries);
       }}
 
+      // Initialize controls and chart
+      refreshDeltaOptions();
+      renderSensitivity();
 
-      // Initial render
-      for (const d of defs) renderOne(d);
-
-      // Re-render on change
-      for (const d of defs) {{
-        const sel = document.getElementById(d.sel);
-        if (!sel) continue;
-        sel.addEventListener('change', () => renderOne(d));
-      }}
+      // Wire up change handlers
+      varSelect.addEventListener('change', () => {{
+        refreshDeltaOptions();
+        renderSensitivity();
+      }});
+      deltaSelect.addEventListener('change', () => {{
+        renderSensitivity();
+      }});
     }}
 
 
@@ -2715,6 +2855,145 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       renderXflrLoads();
     }}
 
+    // ----------------------------
+    // Mass Pie Charts (baseline vs build)
+    // ----------------------------
+    let massPieCharts = [];
+    function destroyMassPieChart() {{
+      if (Array.isArray(massPieCharts) && massPieCharts.length) {{
+        massPieCharts.forEach(chart => {{
+          try {{ chart.destroy(); }} catch (e) {{}}
+        }});
+      }}
+      massPieCharts = [];
+    }}
+
+    function createMassPieChart(canvasId, labelId, series, titleText) {{
+      const canvas = document.getElementById(canvasId);
+      if (!canvas || !Array.isArray(series) || series.length === 0) return;
+
+      const totalMass = series.reduce((sum, item) => sum + (item.mass || 0), 0);
+      if (totalMass === 0) return;
+
+      const labelElem = labelId ? document.getElementById(labelId) : null;
+      if (labelElem) {{
+        labelElem.textContent = titleText;
+      }}
+
+      // Generate colors for pie chart segments
+      const colors = [
+        'rgb(76, 175, 80)',   // Green
+        'rgb(33, 150, 243)',  // Blue
+        'rgb(255, 152, 0)',   // Orange
+        'rgb(244, 67, 54)',   // Red
+        'rgb(156, 39, 176)',  // Purple
+        'rgb(0, 188, 212)',   // Cyan
+        'rgb(255, 235, 59)',  // Yellow
+        'rgb(121, 85, 72)',   // Brown
+        'rgb(96, 125, 139)',  // Blue Grey
+        'rgb(255, 87, 34)',   // Deep Orange
+        'rgb(63, 81, 181)',   // Indigo
+        'rgb(233, 30, 99)',   // Pink
+        'rgb(205, 220, 57)',  // Lime
+        'rgb(0, 150, 136)',   // Teal
+        'rgb(139, 195, 74)',  // Light Green
+        'rgb(3, 169, 244)',   // Light Blue
+        'rgb(255, 193, 7)',   // Amber
+      ];
+
+      const chartData = series.map((item, idx) => {{
+        const mass = item.mass || 0;
+        const pct = (mass / totalMass * 100).toFixed(1);
+        return {{
+          label: `${{item.label}}: ${{mass.toFixed(3)}} kg (${{pct}}%)`,
+          value: mass,
+          color: colors[idx % colors.length]
+        }};
+      }});
+
+      const chart = new Chart(canvas, {{
+        type: 'pie',
+        data: {{
+          labels: chartData.map(d => d.label.split(':')[0]),
+          datasets: [{{
+            data: chartData.map(d => d.value),
+            backgroundColor: chartData.map(d => d.color),
+            // Remove slice borders for a cleaner look
+            borderColor: 'transparent',
+            borderWidth: 0
+          }}]
+        }},
+        options: {{
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {{
+            // Use the HTML header / label as the only visible title to avoid duplicates
+            title: {{
+              display: false,
+              text: titleText,
+              color: '#4CAF50',
+              font: {{ size: 16 }}
+            }},
+            legend: {{
+              // Hide legend for the mass pie charts
+              display: false
+            }},
+            tooltip: {{
+              callbacks: {{
+                label: function(context) {{
+                  const label = context.label || '';
+                  const value = context.parsed || 0;
+                  const pct = ((value / totalMass) * 100).toFixed(1);
+                  return `${{label}}: ${{value.toFixed(3)}} kg (${{pct}}%)`;
+                }}
+              }},
+              backgroundColor: 'rgba(0, 0, 0, 0.8)',
+              titleColor: '#e0e0e0',
+              bodyColor: '#e0e0e0',
+              borderColor: '#444',
+              borderWidth: 1
+            }}
+          }}
+        }}
+      }});
+
+      massPieCharts.push(chart);
+    }}
+
+    function initMassPieChart() {{
+      destroyMassPieChart();
+      if (!massChartData || typeof massChartData !== 'object') {{
+        return;
+      }}
+
+      const originalSeries = Array.isArray(massChartData.original) ? massChartData.original : [];
+      const buildSeries = Array.isArray(massChartData.build) ? massChartData.build : [];
+      const runName = massChartData.runName || 'Original';
+      const buildName = massChartData.buildName || 'Build';
+
+      if (!originalSeries.length && !buildSeries.length) {{
+        return;
+      }}
+
+      if (originalSeries.length) {{
+        createMassPieChart(
+          'massPieChartOriginal',
+          'massPieLabelOriginal',
+          originalSeries,
+          `${{runName}}`
+        );
+      }}
+
+      if (buildSeries.length) {{
+        createMassPieChart(
+          'massPieChartBuild',
+          'massPieLabelBuild',
+          buildSeries,
+          `${{buildName}}`
+        );
+      }}
+    }}
+
     // Tab switching
     document.querySelectorAll('.tab-button').forEach(button => {{
       button.addEventListener('click', () => {{
@@ -2737,6 +3016,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           if (tabId === 'loads') {{
             // allow layout to settle before Chart.js init
             setTimeout(() => initXflrLoadsTab(), 50);
+          }}
+          if (tabId === 'mass') {{
+            // allow layout to settle before Chart.js init
+            setTimeout(() => initMassPieChart(), 50);
           }}
         }}
       }});
@@ -2765,8 +3048,56 @@ def create_threejs_viewer(
     mass_properties = json.loads(mass_properties_path.read_text(encoding="utf-8"))
 
     run_dir = soln_path.parent
-    specs_html = format_specs_html(soln, mass_properties)
+    specs_html = format_specs_html(soln, mass_properties, run_dir)
     top_overlay_html = build_top_overlay_html(run_dir)
+    
+    # Calculate mass data for pie charts (baseline vs build)
+    masses = soln.get("Masses", {}) or {}
+    meta = soln.get("Meta", {}) or {}
+    run_name = str(meta.get("run_id", "Original"))
+    build_name, updates = load_builds(run_dir)
+    mass_components = [
+        ("Solar Cells", "mass_solar_cells"),
+        ("Power Board", "mass_power_board"),
+        ("Batteries", "mass_batteries"),
+        ("Wires", "mass_wires"),
+        ("Avionics", "mass_avionics"),
+        ("Servos", "mass_servos"),
+        ("Motors (Mounted)", "mass_motors_mounted"),
+        ("ESCs", "mass_escs"),
+        ("Propellers", "mass_propellers"),
+        ("Main Wing", "mass_main_wing"),
+        ("Horizontal Stabilizer", "mass_hstab"),
+        ("Vertical Stabilizer", "mass_vstab"),
+        ("Boom", "mass_boom"),
+        ("Fuselages", "mass_fuselages"),
+        ("Superstructures", "mass_superstructures"),
+        ("Boom-VStab Interfaces", "mass_boom_vstab_interfaces"),
+        ("VStab-HStab Interfaces", "mass_vstab_stab_interfaces"),
+    ]
+    mass_chart_original: List[Dict[str, float]] = []
+    mass_chart_build: List[Dict[str, float]] = []
+    for display_name, key in mass_components:
+        orig_val = float(masses.get(key, 0) or 0)
+        if orig_val > 0:
+            mass_chart_original.append({
+                "label": display_name,
+                "mass": orig_val,
+            })
+
+        build_val = float(updates.get(key, orig_val))
+        if build_val > 0:
+            mass_chart_build.append({
+                "label": display_name,
+                "mass": build_val,
+            })
+
+    mass_chart_data = {
+        "runName": run_name,
+        "buildName": build_name or "Mojave 1",
+        "original": mass_chart_original,
+        "build": mass_chart_build,
+    }
 
     airplane_geometry: JSONDict = {}
     if airplane_path and airplane_path.suffix.lower() == ".aero" and airplane_path.exists():
@@ -2774,6 +3105,7 @@ def create_threejs_viewer(
 
     energy_balance_data = load_energy_balance_csv(run_dir)
     xflr_loads_data = load_xflr_loads(run_dir, soln)
+    sensitivity_analysis_data = load_sensitivity_analysis_json(run_dir)
 
     # Compact JSON to keep HTML size reasonable
     soln_json = json.dumps(soln, separators=(",", ":"))
@@ -2781,6 +3113,8 @@ def create_threejs_viewer(
     airplane_geometry_json = json.dumps(airplane_geometry, separators=(",", ":"))
     energy_balance_data_json = json.dumps(energy_balance_data, separators=(",", ":")) if energy_balance_data else "null"
     xflr_loads_data_json = json.dumps(xflr_loads_data, separators=(",", ":")) if xflr_loads_data else "null"
+    sensitivity_analysis_json = json.dumps(sensitivity_analysis_data, separators=(",", ":")) if sensitivity_analysis_data else "null"
+    mass_chart_data_json = json.dumps(mass_chart_data, separators=(",", ":"))
 
     html_content = HTML_TEMPLATE.format(
         specs_html=specs_html,
@@ -2790,6 +3124,8 @@ def create_threejs_viewer(
         airplane_geometry_json=airplane_geometry_json,
         energy_balance_data_json=energy_balance_data_json,
         xflr_loads_data_json=xflr_loads_data_json,
+        sensitivity_analysis_json=sensitivity_analysis_json,
+        mass_chart_data_json=mass_chart_data_json,
     )
 
     output_path.write_text(html_content, encoding="utf-8")
