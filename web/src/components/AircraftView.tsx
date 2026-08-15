@@ -163,40 +163,44 @@ export default function AircraftView({
     const wingX = mp.positions["Main wing"]?.xyz[0] ?? 0;
     const hx = bl + vrc / 4;
 
-    const dimLine = (a: [number, number, number], bb: [number, number, number]) => {
+    // Each dimension bundles a line + number label, linked to the component(s) it measures.
+    const dimObjects: { line: THREE.Line; label: THREE.Sprite; targets: string[] }[] = [];
+    const addDim = (
+      a: [number, number, number],
+      bb: [number, number, number],
+      text: string,
+      labelPos: [number, number, number],
+      targets: string[],
+    ) => {
       const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...a), new THREE.Vector3(...bb)]);
-      dimsGroup.add(new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x9aa0a6 })));
-    };
-    const dimLabel = (text: string, pos: [number, number, number]) => {
+      const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x9aa0a6 }));
+      dimsGroup.add(line);
+
       const cv = document.createElement("canvas");
       cv.width = 256;
       cv.height = 64;
       const ctx = cv.getContext("2d")!;
       ctx.font = "30px monospace";
-      ctx.fillStyle = "#e8e8e8";
+      ctx.fillStyle = "#ffffff";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(text, 128, 34);
-      const spr = new THREE.Sprite(
+      const label = new THREE.Sprite(
         new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), depthTest: false, transparent: true }),
       );
-      spr.position.set(...pos);
-      spr.scale.set(0.6, 0.15, 1);
-      dimsGroup.add(spr);
+      label.position.set(...labelPos);
+      label.scale.set(0.6, 0.15, 1);
+      dimsGroup.add(label);
+
+      dimObjects.push({ line, label, targets });
     };
 
-    dimLine([wingX, -b / 2, 0.14], [wingX, b / 2, 0.14]);
-    dimLabel(`${b.toFixed(2)} m`, [wingX, 0, 0.24]);
-    dimLine([wingX - c / 2, b / 2 + 0.12, 0], [wingX + c / 2, b / 2 + 0.12, 0]);
-    dimLabel(`${c.toFixed(2)} m`, [wingX, b / 2 + 0.22, 0]);
-    dimLine([0, boomY, 0.06], [bl, boomY, 0.06]);
-    dimLabel(`${bl.toFixed(2)} m`, [bl / 2, boomY, 0.14]);
-    dimLine([bl, boomY, 0], [bl, boomY, vspan]);
-    dimLabel(`${vspan.toFixed(2)} m`, [bl, boomY, vspan + 0.1]);
-    dimLine([hx, -hs / 2, vspan], [hx, hs / 2, vspan]);
-    dimLabel(`${hs.toFixed(2)} m`, [hx, 0, vspan + 0.14]);
-    dimLine([-0.5, -boomY, -0.1], [0, -boomY, -0.1]);
-    dimLabel("0.50 m", [-0.25, -boomY, -0.2]);
+    addDim([wingX, -b / 2, 0.14], [wingX, b / 2, 0.14], `${b.toFixed(2)} m`, [wingX, 0, 0.24], ["Main wing"]);
+    addDim([wingX - c / 2, b / 2 + 0.12, 0], [wingX + c / 2, b / 2 + 0.12, 0], `${c.toFixed(2)} m`, [wingX, b / 2 + 0.22, 0], ["Main wing"]);
+    addDim([0, boomY, 0.06], [bl, boomY, 0.06], `${bl.toFixed(2)} m`, [bl / 2, boomY, 0.14], ["Boom R", "Boom L"]);
+    addDim([bl, boomY, 0], [bl, boomY, vspan], `${vspan.toFixed(2)} m`, [bl, boomY, vspan + 0.1], ["Vertical stabilizer R", "Vertical stabilizer L"]);
+    addDim([hx, -hs / 2, vspan], [hx, hs / 2, vspan], `${hs.toFixed(2)} m`, [hx, 0, vspan + 0.14], ["Horizontal stabilizer"]);
+    addDim([-0.5, -boomY, -0.1], [0, -boomY, -0.1], "0.50 m", [-0.25, -boomY, -0.2], ["Fuselage L", "Fuselage R"]);
 
     // Translate gizmo (arrows). Lives in the (unrotated) scene; local space aligns to aircraft axes.
     const gizmo = new TransformControls(camera, renderer.domElement);
@@ -218,6 +222,38 @@ export default function AircraftView({
       cbRef.current?.({ ...layout }, res.total);
     });
     scene.add(gizmo);
+
+    // Hover a dimension line → highlight it and the component edge(s) it measures.
+    const dimRay = new THREE.Raycaster();
+    dimRay.params.Line.threshold = 0.05;
+    const dimPointer = new THREE.Vector2();
+    let hoveredDim: (typeof dimObjects)[number] | null = null;
+    const clearDimHL = () => {
+      if (!hoveredDim) return;
+      (hoveredDim.line.material as THREE.LineBasicMaterial).color.setHex(0x9aa0a6);
+      (hoveredDim.label.material as THREE.SpriteMaterial).color.setHex(0xffffff);
+      hoveredDim.targets.forEach((n) => meshes[n] && baseEmissive(meshes[n]));
+      hoveredDim = null;
+    };
+    const onDimMove = (e: PointerEvent) => {
+      if (!dimsGroup.visible) return;
+      const r = renderer.domElement.getBoundingClientRect();
+      dimPointer.x = ((e.clientX - r.left) / r.width) * 2 - 1;
+      dimPointer.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+      dimRay.setFromCamera(dimPointer, camera);
+      // Hover either the line or its number label.
+      const hit = dimRay.intersectObjects(dimObjects.flatMap((d) => [d.line, d.label]))[0];
+      const dim = hit ? dimObjects.find((d) => d.line === hit.object || d.label === hit.object) ?? null : null;
+      if (dim === hoveredDim) return;
+      clearDimHL();
+      if (dim) {
+        hoveredDim = dim;
+        (dim.line.material as THREE.LineBasicMaterial).color.setHex(0xf59e0b);
+        (dim.label.material as THREE.SpriteMaterial).color.setHex(0xf59e0b);
+        dim.targets.forEach((n) => meshes[n] && setEmissive(meshes[n], 0xf59e0b, 0.6));
+      }
+    };
+    renderer.domElement.addEventListener("pointermove", onDimMove);
 
     let current: THREE.Mesh | null = null;
     apiRef.current = {
@@ -295,6 +331,7 @@ export default function AircraftView({
         }
       });
       grid.dispose();
+      renderer.domElement.removeEventListener("pointermove", onDimMove);
       renderer.forceContextLoss();
       renderer.dispose();
       mount.removeChild(renderer.domElement);

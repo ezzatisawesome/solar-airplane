@@ -74,10 +74,10 @@ export default function Planform({ run }: { run: RunState }) {
 
   return (
     <div className="space-y-10">
-      <View title="Top view" rects={topRects} lines={topLines} dims={topDims} flipV W={W} margin={margin} scale={scale} />
-      <View title="Side view" rects={sideRects} lines={sideLines} dims={sideDims} W={W} margin={margin} scale={scale} />
-      <DimsTable
-        dims={[
+      <div>
+        <h3 className="label mb-3">Aircraft dimensions</h3>
+        <DimsTable
+          dims={[
           ["Wingspan", b],
           ["Wing chord", c],
           ["H-stab span", hs],
@@ -86,10 +86,13 @@ export default function Planform({ run }: { run: RunState }) {
           ["V-stab root chord", vrc],
           ["Boom length", bl],
           ["Boom Y", by],
-          ["Fuselage length", fuseLen],
-          ["Fuselage radius", fuseR],
-        ]}
-      />
+            ["Fuselage length", fuseLen],
+            ["Fuselage radius", fuseR],
+          ]}
+        />
+      </div>
+      <View title="Top view" rects={topRects} lines={topLines} dims={topDims} flipV W={W} margin={margin} scale={scale} />
+      <View title="Side view" rects={sideRects} lines={sideLines} dims={sideDims} W={W} margin={margin} scale={scale} />
     </div>
   );
 }

@@ -59,6 +59,8 @@ export default function MassCompare({ run }: { run: RunState }) {
           label: r.label,
           data: [r.design, ...r.builds],
           backgroundColor: PALETTE[idx % PALETTE.length],
+          categoryPercentage: 0.55,
+          barPercentage: 0.9,
         })),
       },
       options: {
@@ -69,7 +71,7 @@ export default function MassCompare({ run }: { run: RunState }) {
           y: { stacked: true, beginAtZero: true, title: { display: true, text: "Total mass (kg)", color: "#888" }, ticks: { color: "#888" }, grid: { color: "rgba(128,128,128,0.15)" } },
         },
         plugins: {
-          legend: { position: "right", labels: { color: "#bbb", boxWidth: 12, font: { size: 10 } } },
+          legend: { position: "bottom", labels: { color: "#bbb", boxWidth: 12, font: { size: 10 } } },
           tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${(c.raw as number).toFixed(3)} kg` } },
         },
       },
@@ -107,12 +109,12 @@ export default function MassCompare({ run }: { run: RunState }) {
   if (!rows.length) return <div className="text-sm text-[var(--muted)]">No mass data.</div>;
 
   return (
-    <div className="flex flex-col xl:flex-row gap-10 items-start">
-      <div className="w-full xl:w-[440px] shrink-0">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-6 items-start">
+      <div className="min-w-0">
         <ChartCanvas title="Total mass — expected vs as-built" config={config} heightClass="h-[460px]" />
       </div>
 
-      <div className="flex-1 min-w-0">
+      <div className="min-w-0">
         <div className="flex items-center gap-3 mb-2">
           <h3 className="label">Comparison {DEV && "(edit as-built values, then save)"}</h3>
           {DEV && (
