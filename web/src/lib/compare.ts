@@ -1,0 +1,20 @@
+// Component mass keys (soln.Masses / build.masses) with display labels. Mirrors build_mass_chart_data.
+export const MASS_COMPONENTS: { label: string; key: string }[] = [
+  { label: "Solar Cells", key: "mass_solar_cells" },
+  { label: "Power Board", key: "mass_power_board" },
+  { label: "Batteries", key: "mass_batteries" },
+  { label: "Wires", key: "mass_wires" },
+  { label: "Avionics", key: "mass_avionics" },
+  { label: "Servos", key: "mass_servos" },
+  { label: "Motors (Mounted)", key: "mass_motors_mounted" },
+  { label: "ESCs", key: "mass_escs" },
+  { label: "Propellers", key: "mass_propellers" },
+  { label: "Main Wing", key: "mass_main_wing" },
+  { label: "Horizontal Stabilizer", key: "mass_hstab" },
+  { label: "Vertical Stabilizer", key: "mass_vstab" },
+  { label: "Boom", key: "mass_boom" },
+  { label: "Fuselages", key: "mass_fuselages" },
+  { label: "Superstructures", key: "mass_superstructures" },
+  { label: "Boom-VStab Interfaces", key: "mass_boom_vstab_interfaces" },
+  { label: "VStab-HStab Interfaces", key: "mass_vstab_stab_interfaces" },
+];

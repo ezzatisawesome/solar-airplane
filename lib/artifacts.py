@@ -44,11 +44,49 @@ def to_jsonable(x: Any):
 
 
 def write_json(path: Path, data: Dict[str, Any], *, indent: int = 2) -> None:
-    """Writes JSON to a path (non-atomic)."""
+    """Writes JSON atomically (temp file + os.replace) so a crash mid-write can't corrupt the file."""
+    import os
+
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "w") as f:
         json.dump(to_jsonable(data), f, indent=indent)
+    os.replace(tmp, path)
+
+
+STATE_FILENAME = "state.json"
+
+
+def state_path(run_dir: Path) -> Path:
+    """Path to the consolidated per-run state file."""
+    return Path(run_dir) / STATE_FILENAME
+
+
+def load_state(run_dir: Path) -> Dict[str, Any]:
+    """Loads the consolidated state.json for a run, or an empty dict if absent/corrupt."""
+    p = state_path(run_dir)
+    if not p.exists():
+        return {}
+    try:
+        with open(p, "r") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def load_layout(run_dir: Path) -> Dict[str, Any]:
+    """Loads just the persisted point-mass ``layout`` (dragged positions) for a run."""
+    layout = load_state(run_dir).get("layout", {})
+    return layout if isinstance(layout, dict) else {}
+
+
+def update_state(run_dir: Path, **fields: Any) -> Dict[str, Any]:
+    """Merges ``fields`` into state.json (preserving existing keys) and writes it back."""
+    state = load_state(run_dir)
+    state.update(fields)
+    write_json(state_path(run_dir), state)
+    return state
 
 
 def latest_run_dir(output_dir: Path, *, prefix: str = "run_") -> Path:

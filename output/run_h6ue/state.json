@@ -1,0 +1,730 @@
+{
+  "mass": {
+    "components": {
+      "Main wing": {
+        "mass": 2.5685452923817342,
+        "x_cg": 0.07749999750031808,
+        "y_cg": 0.0,
+        "z_cg": 0.0,
+        "Ixx": 7.657516910450413,
+        "Iyy": 0.011866697749397274,
+        "Izz": 7.66879119895179,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "Horizontal stabilizer": {
+        "mass": 0.16686927629774873,
+        "x_cg": 1.0235581798095983,
+        "y_cg": 0.0,
+        "z_cg": 0.3998898568765584,
+        "Ixx": 0.031093576961363306,
+        "Iyy": 0.0002194504454380717,
+        "Izz": 0.03130868185342637,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "Vertical stabilizer L": {
+        "mass": 0.07138296537913855,
+        "x_cg": 0.9923081823094327,
+        "y_cg": 0.7476401301699119,
+        "z_cg": 0.1999449284382792,
+        "Ixx": 0.0009521782532489406,
+        "Iyy": 0.0011890609846282557,
+        "Izz": 0.0002387416624719874,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "Vertical stabilizer R": {
+        "mass": 0.07138296537913855,
+        "x_cg": 0.9923081823094327,
+        "y_cg": -0.7476401301699119,
+        "z_cg": 0.1999449284382792,
+        "Ixx": 0.0009521782532489406,
+        "Iyy": 0.0011890609846282557,
+        "Izz": 0.0002387416624719874,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "Boom L": {
+        "mass": 0.08312271440314128,
+        "x_cg": 0.4617928577952294,
+        "y_cg": 0.7476401301699119,
+        "z_cg": -0.02,
+        "Ixx": 4.156135720157064e-06,
+        "Iyy": 0.005910790928611267,
+        "Izz": 0.005910790928611267,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "Boom R": {
+        "mass": 0.08312271440314128,
+        "x_cg": 0.4617928577952294,
+        "y_cg": -0.7476401301699119,
+        "z_cg": -0.02,
+        "Ixx": 4.156135720157064e-06,
+        "Iyy": 0.005910790928611267,
+        "Izz": 0.005910790928611267,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "Fuselage L": {
+        "mass": 0.1,
+        "x_cg": -0.25,
+        "y_cg": 0.7476401301699119,
+        "z_cg": -0.02,
+        "Ixx": 7.035761222667992e-05,
+        "Iyy": 0.0021185121394466733,
+        "Izz": 0.0021185121394466733,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "Fuselage R": {
+        "mass": 0.1,
+        "x_cg": -0.25,
+        "y_cg": -0.7476401301699119,
+        "z_cg": -0.02,
+        "Ixx": 7.035761222667992e-05,
+        "Iyy": 0.0021185121394466733,
+        "Izz": 0.0021185121394466733,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "Solar cells": {
+        "mass": 0.6214830309066142,
+        "x_cg": 0.15499999500063616,
+        "y_cg": 0.0,
+        "z_cg": 0.001,
+        "Ixx": 1.8527348062714484,
+        "Iyy": 0.0024271465014389167,
+        "Izz": 1.8551615384508668,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "Batteries": {
+        "mass": 3.8947368810483565,
+        "x_cg": 0.15499999500063616,
+        "y_cg": 0.0,
+        "z_cg": 0.0,
+        "Ixx": 0.7259669643430083,
+        "Iyy": 0.013274561536239817,
+        "Izz": 0.7386573153470909,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "FC": {
+        "mass": 0.08,
+        "x_cg": 0.17979999420073794,
+        "y_cg": 0.0,
+        "z_cg": 0.0,
+        "Ixx": 0.0,
+        "Iyy": 0.0,
+        "Izz": 0.0,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "GPS": {
+        "mass": 0.02,
+        "x_cg": 0.17979999420073794,
+        "y_cg": 0.0,
+        "z_cg": 0.0,
+        "Ixx": 0.0,
+        "Iyy": 0.0,
+        "Izz": 0.0,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "Telemetry": {
+        "mass": 0.03,
+        "x_cg": 0.17979999420073794,
+        "y_cg": 0.0,
+        "z_cg": 0.0,
+        "Ixx": 0.0,
+        "Iyy": 0.0,
+        "Izz": 0.0,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "Receiver": {
+        "mass": 0.02,
+        "x_cg": 0.17979999420073794,
+        "y_cg": 0.0,
+        "z_cg": 0.0,
+        "Ixx": 0.0,
+        "Iyy": 0.0,
+        "Izz": 0.0,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "Navlight Port": {
+        "mass": 0.01,
+        "x_cg": 0.17979999420073794,
+        "y_cg": -1.4952802603398239,
+        "z_cg": 0.0,
+        "Ixx": 0.0,
+        "Iyy": 0.0,
+        "Izz": 0.0,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "Navlight Starboard": {
+        "mass": 0.01,
+        "x_cg": 0.17979999420073794,
+        "y_cg": 1.4952802603398239,
+        "z_cg": 0.0,
+        "Ixx": 0.0,
+        "Iyy": 0.0,
+        "Izz": 0.0,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "Navlight Center": {
+        "mass": 0.01,
+        "x_cg": 0.17979999420073794,
+        "y_cg": 0.0,
+        "z_cg": 0.0,
+        "Ixx": 0.0,
+        "Iyy": 0.0,
+        "Izz": 0.0,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "Navlight Hstab": {
+        "mass": 0.01,
+        "x_cg": 1.064808176509817,
+        "y_cg": 0.0,
+        "z_cg": 0.3998898568765584,
+        "Ixx": 0.0,
+        "Iyy": 0.0,
+        "Izz": 0.0,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "Motor L": {
+        "mass": 0.30250000000000005,
+        "x_cg": -0.5,
+        "y_cg": 0.7476401301699119,
+        "z_cg": -0.02,
+        "Ixx": 0.0,
+        "Iyy": 0.0,
+        "Izz": 0.0,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "Motor R": {
+        "mass": 0.30250000000000005,
+        "x_cg": -0.5,
+        "y_cg": -0.7476401301699119,
+        "z_cg": -0.02,
+        "Ixx": 0.0,
+        "Iyy": 0.0,
+        "Izz": 0.0,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "ESC L": {
+        "mass": 0.0,
+        "x_cg": -0.25,
+        "y_cg": 0.7476401301699119,
+        "z_cg": -0.01,
+        "Ixx": 0.0,
+        "Iyy": 0.0,
+        "Izz": 0.0,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "ESC R": {
+        "mass": 0.0,
+        "x_cg": -0.25,
+        "y_cg": -0.7476401301699119,
+        "z_cg": -0.01,
+        "Ixx": 0.0,
+        "Iyy": 0.0,
+        "Izz": 0.0,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "Prop L": {
+        "mass": 0.055,
+        "x_cg": -0.5,
+        "y_cg": 0.7476401301699119,
+        "z_cg": 0.0,
+        "Ixx": 0.0011000000000000003,
+        "Iyy": 0.0005500000000000001,
+        "Izz": 0.0005500000000000001,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "Prop R": {
+        "mass": 0.055,
+        "x_cg": -0.5,
+        "y_cg": -0.7476401301699119,
+        "z_cg": 0.0,
+        "Ixx": 0.0011000000000000003,
+        "Iyy": 0.0005500000000000001,
+        "Izz": 0.0005500000000000001,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "Superstructure L": {
+        "mass": 0.1,
+        "x_cg": 0.07749999750031808,
+        "y_cg": 0.7476401301699119,
+        "z_cg": 0.0,
+        "Ixx": 0.0,
+        "Iyy": 0.0,
+        "Izz": 0.0,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "Superstructure R": {
+        "mass": 0.1,
+        "x_cg": 0.07749999750031808,
+        "y_cg": -0.7476401301699119,
+        "z_cg": 0.0,
+        "Ixx": 0.0,
+        "Iyy": 0.0,
+        "Izz": 0.0,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "Power board L": {
+        "mass": 0.05,
+        "x_cg": 0.07749999750031808,
+        "y_cg": 0.7476401301699119,
+        "z_cg": 0.0,
+        "Ixx": 0.0,
+        "Iyy": 0.0,
+        "Izz": 0.0,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "Power board R": {
+        "mass": 0.05,
+        "x_cg": 0.07749999750031808,
+        "y_cg": -0.7476401301699119,
+        "z_cg": 0.0,
+        "Ixx": 0.0,
+        "Iyy": 0.0,
+        "Izz": 0.0,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "Boom_vstab interface L": {
+        "mass": 0.05,
+        "x_cg": 0.9235857155904588,
+        "y_cg": 0.7476401301699119,
+        "z_cg": -0.02,
+        "Ixx": 0.0,
+        "Iyy": 0.0,
+        "Izz": 0.0,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "Boom_vstab interface R": {
+        "mass": 0.05,
+        "x_cg": 0.9235857155904588,
+        "y_cg": -0.7476401301699119,
+        "z_cg": -0.02,
+        "Ixx": 0.0,
+        "Iyy": 0.0,
+        "Izz": 0.0,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "Vstab_hstab interface L": {
+        "mass": 0.03,
+        "x_cg": 0.9923081823094327,
+        "y_cg": 0.7476401301699119,
+        "z_cg": 0.3998898568765584,
+        "Ixx": 0.0,
+        "Iyy": 0.0,
+        "Izz": 0.0,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      },
+      "Vstab_hstab interface R": {
+        "mass": 0.03,
+        "x_cg": 0.9923081823094327,
+        "y_cg": -0.7476401301699119,
+        "z_cg": 0.3998898568765584,
+        "Ixx": 0.0,
+        "Iyy": 0.0,
+        "Izz": 0.0,
+        "Ixy": 0.0,
+        "Iyz": 0.0,
+        "Ixz": 0.0
+      }
+    },
+    "total": {
+      "mass": 9.125645840199013,
+      "x_cg": 0.12042705194250443,
+      "y_cg": 0.0,
+      "z_cg": 0.011228084132902875,
+      "Ixx": 11.300451958586146,
+      "Iyy": 0.7872173998186124,
+      "Izz": 11.99460523844324,
+      "Ixy": 2.42861286636753e-17,
+      "Iyz": -1.734723475976807e-18,
+      "Ixz": -0.11611836933579231
+    },
+    "total_mass_verification": {
+      "calculated": 9.125645840199013,
+      "expected": 9.471217675182215,
+      "difference": -0.3455718349832022
+    },
+    "positions": {
+      "Main wing": {
+        "xyz": [
+          0.07749999750031808,
+          0.0,
+          0.0
+        ],
+        "kind": "box",
+        "draggable": false,
+        "category": "structure"
+      },
+      "Horizontal stabilizer": {
+        "xyz": [
+          1.0235581798095983,
+          0.0,
+          0.3998898568765584
+        ],
+        "kind": "box",
+        "draggable": false,
+        "category": "structure"
+      },
+      "Vertical stabilizer L": {
+        "xyz": [
+          0.9923081823094327,
+          0.7476401301699119,
+          0.1999449284382792
+        ],
+        "kind": "box",
+        "draggable": false,
+        "category": "structure"
+      },
+      "Vertical stabilizer R": {
+        "xyz": [
+          0.9923081823094327,
+          -0.7476401301699119,
+          0.1999449284382792
+        ],
+        "kind": "box",
+        "draggable": false,
+        "category": "structure"
+      },
+      "Boom L": {
+        "xyz": [
+          0.4617928577952294,
+          0.7476401301699119,
+          -0.02
+        ],
+        "kind": "cylinder",
+        "draggable": false,
+        "category": "structure"
+      },
+      "Boom R": {
+        "xyz": [
+          0.4617928577952294,
+          -0.7476401301699119,
+          -0.02
+        ],
+        "kind": "cylinder",
+        "draggable": false,
+        "category": "structure"
+      },
+      "Fuselage L": {
+        "xyz": [
+          -0.25,
+          0.7476401301699119,
+          -0.02
+        ],
+        "kind": "cylinder",
+        "draggable": false,
+        "category": "structure"
+      },
+      "Fuselage R": {
+        "xyz": [
+          -0.25,
+          -0.7476401301699119,
+          -0.02
+        ],
+        "kind": "cylinder",
+        "draggable": false,
+        "category": "structure"
+      },
+      "Solar cells": {
+        "xyz": [
+          0.15499999500063616,
+          0.0,
+          0.001
+        ],
+        "kind": "box",
+        "draggable": false,
+        "category": "structure"
+      },
+      "Batteries": {
+        "xyz": [
+          0.15499999500063616,
+          0.0,
+          0.0
+        ],
+        "kind": "box",
+        "draggable": true,
+        "category": "power"
+      },
+      "FC": {
+        "xyz": [
+          0.17979999420073794,
+          0.0,
+          0.0
+        ],
+        "kind": "point",
+        "draggable": true,
+        "category": "avionics"
+      },
+      "GPS": {
+        "xyz": [
+          0.17979999420073794,
+          0.0,
+          0.0
+        ],
+        "kind": "point",
+        "draggable": true,
+        "category": "avionics"
+      },
+      "Telemetry": {
+        "xyz": [
+          0.17979999420073794,
+          0.0,
+          0.0
+        ],
+        "kind": "point",
+        "draggable": true,
+        "category": "avionics"
+      },
+      "Receiver": {
+        "xyz": [
+          0.17979999420073794,
+          0.0,
+          0.0
+        ],
+        "kind": "point",
+        "draggable": true,
+        "category": "avionics"
+      },
+      "Navlight Port": {
+        "xyz": [
+          0.17979999420073794,
+          -1.4952802603398239,
+          0.0
+        ],
+        "kind": "point",
+        "draggable": true,
+        "category": "avionics"
+      },
+      "Navlight Starboard": {
+        "xyz": [
+          0.17979999420073794,
+          1.4952802603398239,
+          0.0
+        ],
+        "kind": "point",
+        "draggable": true,
+        "category": "avionics"
+      },
+      "Navlight Center": {
+        "xyz": [
+          0.17979999420073794,
+          0.0,
+          0.0
+        ],
+        "kind": "point",
+        "draggable": true,
+        "category": "avionics"
+      },
+      "Navlight Hstab": {
+        "xyz": [
+          1.064808176509817,
+          0.0,
+          0.3998898568765584
+        ],
+        "kind": "point",
+        "draggable": true,
+        "category": "avionics"
+      },
+      "Motor L": {
+        "xyz": [
+          -0.5,
+          0.7476401301699119,
+          -0.02
+        ],
+        "kind": "point",
+        "draggable": true,
+        "category": "propulsion"
+      },
+      "Motor R": {
+        "xyz": [
+          -0.5,
+          -0.7476401301699119,
+          -0.02
+        ],
+        "kind": "point",
+        "draggable": true,
+        "category": "propulsion"
+      },
+      "ESC L": {
+        "xyz": [
+          -0.25,
+          0.7476401301699119,
+          -0.01
+        ],
+        "kind": "point",
+        "draggable": true,
+        "category": "propulsion"
+      },
+      "ESC R": {
+        "xyz": [
+          -0.25,
+          -0.7476401301699119,
+          -0.01
+        ],
+        "kind": "point",
+        "draggable": true,
+        "category": "propulsion"
+      },
+      "Prop L": {
+        "xyz": [
+          -0.5,
+          0.7476401301699119,
+          0.0
+        ],
+        "kind": "disk",
+        "draggable": false,
+        "category": "propulsion"
+      },
+      "Prop R": {
+        "xyz": [
+          -0.5,
+          -0.7476401301699119,
+          0.0
+        ],
+        "kind": "disk",
+        "draggable": false,
+        "category": "propulsion"
+      },
+      "Superstructure L": {
+        "xyz": [
+          0.07749999750031808,
+          0.7476401301699119,
+          0.0
+        ],
+        "kind": "point",
+        "draggable": true,
+        "category": "structure"
+      },
+      "Superstructure R": {
+        "xyz": [
+          0.07749999750031808,
+          -0.7476401301699119,
+          0.0
+        ],
+        "kind": "point",
+        "draggable": true,
+        "category": "structure"
+      },
+      "Power board L": {
+        "xyz": [
+          0.07749999750031808,
+          0.7476401301699119,
+          0.0
+        ],
+        "kind": "point",
+        "draggable": true,
+        "category": "power"
+      },
+      "Power board R": {
+        "xyz": [
+          0.07749999750031808,
+          -0.7476401301699119,
+          0.0
+        ],
+        "kind": "point",
+        "draggable": true,
+        "category": "power"
+      },
+      "Boom_vstab interface L": {
+        "xyz": [
+          0.9235857155904588,
+          0.7476401301699119,
+          -0.02
+        ],
+        "kind": "point",
+        "draggable": true,
+        "category": "structure"
+      },
+      "Boom_vstab interface R": {
+        "xyz": [
+          0.9235857155904588,
+          -0.7476401301699119,
+          -0.02
+        ],
+        "kind": "point",
+        "draggable": true,
+        "category": "structure"
+      },
+      "Vstab_hstab interface L": {
+        "xyz": [
+          0.9923081823094327,
+          0.7476401301699119,
+          0.3998898568765584
+        ],
+        "kind": "point",
+        "draggable": true,
+        "category": "structure"
+      },
+      "Vstab_hstab interface R": {
+        "xyz": [
+          0.9923081823094327,
+          -0.7476401301699119,
+          0.3998898568765584
+        ],
+        "kind": "point",
+        "draggable": true,
+        "category": "structure"
+      }
+    },
+    "applied_overrides": {}
+  }
+}

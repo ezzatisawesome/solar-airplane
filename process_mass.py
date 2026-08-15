@@ -6,7 +6,7 @@ from typing import Dict, Tuple
 import aerosandbox as asb
 import numpy as onp
 from aerosandbox.weights import MassProperties
-from lib.artifacts import latest_run_dir, write_json
+from lib.artifacts import latest_run_dir, load_layout, state_path, update_state
 
 
 def _mp_point(mass_kg: float, xyz: Tuple[float, float, float]) -> MassProperties:
@@ -82,7 +82,95 @@ def _mp_to_dict(mp: MassProperties) -> Dict[str, float]:
     }
 
 
-def compute_and_embed_mass_properties(soln: dict) -> dict:
+def default_positions(soln: dict) -> Dict[str, dict]:
+    """Computes the default center-of-gravity position of every component from the solution.
+
+    Returns a mapping ``{name: {"xyz": [x, y, z], "kind": str, "draggable": bool, "category": str}}``.
+    Point-mass components (avionics, motors, ESCs, navlights, interfaces, power boards) and the
+    battery pack are marked draggable so they can be relocated live in the UI; structural surfaces
+    (wings, booms, fuselages, stabilizers) are geometry-tied and stay fixed.
+    """
+    main_wing = soln.get("Main Wing", {})
+    geometry = soln.get("Geometry", {})
+    hstab = soln.get("HStab", {})
+    vstab = soln.get("V Stab", {})
+
+    b_w = float(main_wing.get("wingspan", main_wing.get("b_w", 0)))
+    c_root = float(main_wing.get("chordlen", 0))
+    boom_len = float(geometry.get("boom_length", 0))
+    boom_y = float(geometry.get("boom_y", 0))
+    x_cg_assumed = float(geometry.get("cg_le_dist", 0))
+    vstab_span = float(vstab.get("vstab_span", 0))
+    vstab_root_chord = float(vstab.get("vstab_root_chord", 0))
+    hstab_chord = float(hstab.get("hstab_chordlen", 0))
+
+    avionics_x = x_cg_assumed + 0.33 * c_root  # Third chord
+    hstab_x = boom_len + vstab_root_chord / 4 + 0.25 * hstab_chord
+    hstab_z = vstab_span
+
+    def entry(xyz, kind, draggable, category):
+        return {"xyz": [float(xyz[0]), float(xyz[1]), float(xyz[2])],
+                "kind": kind, "draggable": bool(draggable), "category": category}
+
+    positions: Dict[str, dict] = {
+        # Structural surfaces (geometry-tied, not draggable)
+        "Main wing": entry((x_cg_assumed, 0.0, 0.0), "box", False, "structure"),
+        "Horizontal stabilizer": entry((hstab_x, 0.0, hstab_z), "box", False, "structure"),
+        "Vertical stabilizer L": entry((boom_len + 0.25 * vstab_root_chord, boom_y, 0.5 * vstab_span), "box", False, "structure"),
+        "Vertical stabilizer R": entry((boom_len + 0.25 * vstab_root_chord, -boom_y, 0.5 * vstab_span), "box", False, "structure"),
+        "Boom L": entry((0.5 * boom_len, boom_y, -0.02), "cylinder", False, "structure"),
+        "Boom R": entry((0.5 * boom_len, -boom_y, -0.02), "cylinder", False, "structure"),
+        "Fuselage L": entry((-0.25, boom_y, -0.02), "cylinder", False, "structure"),
+        "Fuselage R": entry((-0.25, -boom_y, -0.02), "cylinder", False, "structure"),
+        "Solar cells": entry((x_cg_assumed + 0.25 * c_root, 0.0, 0.001), "box", False, "structure"),
+        # Battery pack (box, but relocatable for CG tuning)
+        "Batteries": entry((x_cg_assumed + 0.25 * c_root, 0.0, 0.0), "box", True, "power"),
+        # Avionics point masses (third chord, centerline)
+        "FC": entry((avionics_x, 0.0, 0.0), "point", True, "avionics"),
+        "GPS": entry((avionics_x, 0.0, 0.0), "point", True, "avionics"),
+        "Telemetry": entry((avionics_x, 0.0, 0.0), "point", True, "avionics"),
+        "Receiver": entry((avionics_x, 0.0, 0.0), "point", True, "avionics"),
+        # Navlights
+        "Navlight Port": entry((avionics_x, -b_w / 4, 0.0), "point", True, "avionics"),
+        "Navlight Starboard": entry((avionics_x, b_w / 4, 0.0), "point", True, "avionics"),
+        "Navlight Center": entry((avionics_x, 0.0, 0.0), "point", True, "avionics"),
+        "Navlight Hstab": entry((hstab_x + 0.33 * hstab_chord, 0.0, hstab_z), "point", True, "avionics"),
+        # Propulsion point masses
+        "Motor L": entry((-0.5, boom_y, -0.02), "point", True, "propulsion"),
+        "Motor R": entry((-0.5, -boom_y, -0.02), "point", True, "propulsion"),
+        "ESC L": entry((-0.25, boom_y, -0.01), "point", True, "propulsion"),
+        "ESC R": entry((-0.25, -boom_y, -0.01), "point", True, "propulsion"),
+        "Prop L": entry((-0.5, boom_y, 0.0), "disk", False, "propulsion"),
+        "Prop R": entry((-0.5, -boom_y, 0.0), "disk", False, "propulsion"),
+        # Structural interfaces & power boards (point masses)
+        "Superstructure L": entry((x_cg_assumed, boom_y, 0.0), "point", True, "structure"),
+        "Superstructure R": entry((x_cg_assumed, -boom_y, 0.0), "point", True, "structure"),
+        "Power board L": entry((x_cg_assumed, boom_y, 0.0), "point", True, "power"),
+        "Power board R": entry((x_cg_assumed, -boom_y, 0.0), "point", True, "power"),
+        "Boom_vstab interface L": entry((boom_len, boom_y, -0.02), "point", True, "structure"),
+        "Boom_vstab interface R": entry((boom_len, -boom_y, -0.02), "point", True, "structure"),
+        "Vstab_hstab interface L": entry((boom_len + vstab_root_chord / 4, boom_y, vstab_span), "point", True, "structure"),
+        "Vstab_hstab interface R": entry((boom_len + vstab_root_chord / 4, -boom_y, vstab_span), "point", True, "structure"),
+    }
+    return positions
+
+
+def compute_mass_properties(soln: dict, layout: Dict[str, list] = None) -> dict:
+    """Computes full mass properties for the aircraft.
+
+    ``layout`` optionally overrides the center position ``[x, y, z]`` of individual (draggable)
+    components; anything not present falls back to :func:`default_positions`.
+    """
+    layout = layout or {}
+    positions = default_positions(soln)
+    # Apply user layout overrides (only for known, draggable components)
+    for name, xyz in layout.items():
+        if name in positions and positions[name]["draggable"] and xyz is not None:
+            positions[name]["xyz"] = [float(xyz[0]), float(xyz[1]), float(xyz[2])]
+
+    def pos(name):
+        return tuple(positions[name]["xyz"])
+
     # Access data from solution structure
     main_wing = soln.get("Main Wing", {})
     geometry = soln.get("Geometry", {})
@@ -120,143 +208,83 @@ def compute_and_embed_mass_properties(soln: dict) -> dict:
     # Battery box dimensions for moment of inertia calculation
     batt_box = [0.20, 0.10, 0.03]  # [Lx, Ly, Lz] in meters
 
-    wing_xyz = (x_cg_assumed, 0.0, 0.0)
-    hstab_xyz = (boom_len + vstab_root_chord / 4 + 0.25 * hstab_chord, 0.0, vstab_span)
+    # Split masses (left/right or per-instance)
+    vstab_each_mass = 0.5 * float(masses.get("mass_vstab", 0))
+    boom_each_mass = 0.5 * float(masses.get("mass_boom", 0))
+    fuselage_each_mass = 0.5 * float(masses.get("mass_fuselages", 0))
 
-    # Vstab masses (split between left and right)
-    vstab_total_mass = float(masses.get("mass_vstab", 0))
-    vstab_each_mass = 0.5 * vstab_total_mass
-    vstab_xyz_L = (boom_len + 0.25 * vstab_root_chord, boom_y, 0.5 * vstab_span)
-    vstab_xyz_R = (boom_len + 0.25 * vstab_root_chord, -boom_y, 0.5 * vstab_span)
-
-    # Boom masses (split between left and right)
-    boom_total_mass = float(masses.get("mass_boom", 0))
-    boom_each_mass = 0.5 * boom_total_mass
-    boom_xyz_L = (0.5 * boom_len, boom_y, -0.02)
-    boom_xyz_R = (0.5 * boom_len, -boom_y, -0.02)
-
-    # Fuselage masses (split between left and right)
-    fuselage_total_mass = float(masses.get("mass_fuselages", 0))
-    fuselage_each_mass = 0.5 * fuselage_total_mass
-    fuselage_xyz_L = (-0.25, boom_y, -0.02)  # Middle of fuselage
-    fuselage_xyz_R = (-0.25, -boom_y, -0.02)
-
-    # Solar cells - distributed across full span starting from center
+    # Solar cells - distributed across full span; mean chord covered sets the box Lx
     solar_panels_n = float(power.get("solar_panels_n", 0))
     solar_area = solar_panels_n * solar_panel_side_length**2
     solar_mean_chord_covered = solar_area / max(b_w, 1e-6)
-    solar_xyz = (x_cg_assumed + 0.25 * c_root, 0.0, 0.001)  # Quarter chord, centerline
 
-    # Batteries - distributed across inboard wing (y=-boom_y to y=+boom_y)
-    batt_xyz = (x_cg_assumed + 0.25 * c_root, 0.0, 0.0)  # Quarter chord, centerline
-
-    # Avionics components at middle of main wing at third chord
-    avionics_x = x_cg_assumed + 0.33 * c_root  # Third chord
-    avionics_xyz = (avionics_x, 0.0, 0.0)  # Centerline
-
-    # Propulsion components
+    # Propulsion
     prop_radius = 0.5 * float(propulsion.get("propeller_diameter", 0.4))
-    # Motors at front of fuselages
-    motor_xyz_L = (-0.5, boom_y, -0.02)  # Front of fuselage
-    motor_xyz_R = (-0.5, -boom_y, -0.02)
-    # ESC at middle of fuselages
-    esc_xyz_L = (-0.25, boom_y, -0.01)  # Middle of fuselage
-    esc_xyz_R = (-0.25, -boom_y, -0.01)
-    # Propellers at front of fuselage
-    prop_xyz_L = (-0.5, boom_y, 0.0)  # Front of fuselage
-    prop_xyz_R = (-0.5, -boom_y, 0.0)
 
-    # Extract individual avionics component masses
+    # Individual avionics component masses
     mass_fc = float(masses.get("mass_fc", 0.08))
     mass_gps = float(masses.get("mass_gps", 0.02))
     mass_telemtry = float(masses.get("mass_telemtry", 0.03))
     mass_receiver = float(masses.get("mass_receiver", 0.02))
-    # Navlights: 4 total, 0.01 kg each
-    mass_navlights_total = float(masses.get("mass_navlights", 0.04))
-    mass_navlight_each = mass_navlights_total / 4.0
-    
-    # Power board mass (located at superstructure position)
-    mass_power_board = float(masses.get("mass_power_board", 0.15))
-
-    # Navlight positions
-    navlight_port_xyz = (avionics_x, -b_w / 4, 0.0)  # Port wing
-    navlight_starboard_xyz = (avionics_x, b_w / 4, 0.0)  # Starboard wing
-    navlight_center_xyz = (avionics_x, 0.0, 0.0)  # Center with avionics
-    navlight_hstab_xyz = (hstab_xyz[0] + 0.33 * hstab_chord, 0.0, hstab_xyz[2])  # Hstab center
-
-    # Structural interface positions
-    # Superstructures: middle of wing where booms are
+    mass_navlight_each = float(masses.get("mass_navlights", 0.04)) / 4.0
+    power_board_each_mass = 0.5 * float(masses.get("mass_power_board", 0.15))
     superstructure_each_mass = 0.5 * float(masses.get("mass_superstructures", 0))
-    superstructure_xyz_L = (x_cg_assumed, boom_y, 0.0)
-    superstructure_xyz_R = (x_cg_assumed, -boom_y, 0.0)
-    
-    # Power board: located at superstructure position (middle of wing where booms are)
-    power_board_each_mass = 0.5 * mass_power_board
-    power_board_xyz_L = (x_cg_assumed, boom_y, 0.0)
-    power_board_xyz_R = (x_cg_assumed, -boom_y, 0.0)
-
-    # Boom_vstab interfaces: ends of each boom
     boom_vstab_each_mass = 0.5 * float(masses.get("mass_boom_vstab_interfaces", 0))
-    boom_vstab_xyz_L = (boom_len, boom_y, -0.02)
-    boom_vstab_xyz_R = (boom_len, -boom_y, -0.02)
-
-    # Vstab & hstab interfaces: where vstab and hstab meet
     vstab_hstab_each_mass = 0.5 * float(masses.get("mass_vstab_stab_interfaces", 0))
-    vstab_hstab_xyz_L = (boom_len + vstab_root_chord / 4, boom_y, vstab_span)
-    vstab_hstab_xyz_R = (boom_len + vstab_root_chord / 4, -boom_y, vstab_span)
 
-    # Build mass properties components
+    # Build mass properties components. All center positions come from `positions`
+    # (defaults + any user layout overrides applied above), keyed by component name.
     mp_components = {
-        "Main wing": _mp_box(float(masses.get("mass_main_wing", 0)), wing_xyz, Lx=0.75 * c_root, Ly=b_w, Lz=max(t_wing, 0.005)),
-        "Horizontal stabilizer": _mp_box(float(masses.get("mass_hstab", 0)), hstab_xyz, Lx=hstab_chord, Ly=hstab_span, Lz=max(t_tail, 0.003)),
+        "Main wing": _mp_box(float(masses.get("mass_main_wing", 0)), pos("Main wing"), Lx=0.75 * c_root, Ly=b_w, Lz=max(t_wing, 0.005)),
+        "Horizontal stabilizer": _mp_box(float(masses.get("mass_hstab", 0)), pos("Horizontal stabilizer"), Lx=hstab_chord, Ly=hstab_span, Lz=max(t_tail, 0.003)),
         "Vertical stabilizer L": _mp_box(
             vstab_each_mass,
-            vstab_xyz_L,
+            pos("Vertical stabilizer L"),
             Lx=max(0.5 * (vstab_root_chord + hstab_chord), 1e-6),
             Ly=max(t_tail, 0.003),
             Lz=max(vstab_span, 1e-6),
         ),
         "Vertical stabilizer R": _mp_box(
             vstab_each_mass,
-            vstab_xyz_R,
+            pos("Vertical stabilizer R"),
             Lx=max(0.5 * (vstab_root_chord + hstab_chord), 1e-6),
             Ly=max(t_tail, 0.003),
             Lz=max(vstab_span, 1e-6),
         ),
-        "Boom L": _mp_cylinder_x(boom_each_mass, boom_xyz_L, radius_m=boom_radius, length_m=boom_len),
-        "Boom R": _mp_cylinder_x(boom_each_mass, boom_xyz_R, radius_m=boom_radius, length_m=boom_len),
-        "Fuselage L": _mp_cylinder_x(fuselage_each_mass, fuselage_xyz_L, radius_m=fuselage_radius, length_m=fuselage_length),
-        "Fuselage R": _mp_cylinder_x(fuselage_each_mass, fuselage_xyz_R, radius_m=fuselage_radius, length_m=fuselage_length),
+        "Boom L": _mp_cylinder_x(boom_each_mass, pos("Boom L"), radius_m=boom_radius, length_m=boom_len),
+        "Boom R": _mp_cylinder_x(boom_each_mass, pos("Boom R"), radius_m=boom_radius, length_m=boom_len),
+        "Fuselage L": _mp_cylinder_x(fuselage_each_mass, pos("Fuselage L"), radius_m=fuselage_radius, length_m=fuselage_length),
+        "Fuselage R": _mp_cylinder_x(fuselage_each_mass, pos("Fuselage R"), radius_m=fuselage_radius, length_m=fuselage_length),
         # Solar cells: distributed across full span (Ly = wingspan)
-        "Solar cells": _mp_box(float(masses.get("mass_solar_cells", 0)), solar_xyz, Lx=max(solar_mean_chord_covered, 0.05), Ly=b_w, Lz=0.002),
+        "Solar cells": _mp_box(float(masses.get("mass_solar_cells", 0)), pos("Solar cells"), Lx=max(solar_mean_chord_covered, 0.05), Ly=b_w, Lz=0.002),
         # Batteries: distributed across inboard wing (Ly = 2 * boom_y)
-        "Batteries": _mp_box(float(masses.get("mass_batteries", 0)), batt_xyz, Lx=batt_box[0], Ly=2 * boom_y, Lz=batt_box[2]),
+        "Batteries": _mp_box(float(masses.get("mass_batteries", 0)), pos("Batteries"), Lx=batt_box[0], Ly=2 * boom_y, Lz=batt_box[2]),
         # Wires: Disregard (removed)
         # Avionics components at third chord
-        "FC": _mp_point(mass_fc, avionics_xyz),
-        "GPS": _mp_point(mass_gps, avionics_xyz),
-        "Telemetry": _mp_point(mass_telemtry, avionics_xyz),
-        "Receiver": _mp_point(mass_receiver, avionics_xyz),
+        "FC": _mp_point(mass_fc, pos("FC")),
+        "GPS": _mp_point(mass_gps, pos("GPS")),
+        "Telemetry": _mp_point(mass_telemtry, pos("Telemetry")),
+        "Receiver": _mp_point(mass_receiver, pos("Receiver")),
         # Navlights
-        "Navlight Port": _mp_point(mass_navlight_each, navlight_port_xyz),
-        "Navlight Starboard": _mp_point(mass_navlight_each, navlight_starboard_xyz),
-        "Navlight Center": _mp_point(mass_navlight_each, navlight_center_xyz),
-        "Navlight Hstab": _mp_point(mass_navlight_each, navlight_hstab_xyz),
-        "Motor L": _mp_point(0.5 * float(masses.get("mass_motors_mounted", 0)), motor_xyz_L),
-        "Motor R": _mp_point(0.5 * float(masses.get("mass_motors_mounted", 0)), motor_xyz_R),
-        "ESC L": _mp_point(0.5 * float(masses.get("mass_esc", 0)), esc_xyz_L),
-        "ESC R": _mp_point(0.5 * float(masses.get("mass_esc", 0)), esc_xyz_R),
-        "Prop L": _mp_disk_x(0.5 * float(masses.get("mass_propellers", 0)), prop_xyz_L, radius_m=max(prop_radius, 0.01)),
-        "Prop R": _mp_disk_x(0.5 * float(masses.get("mass_propellers", 0)), prop_xyz_R, radius_m=max(prop_radius, 0.01)),
+        "Navlight Port": _mp_point(mass_navlight_each, pos("Navlight Port")),
+        "Navlight Starboard": _mp_point(mass_navlight_each, pos("Navlight Starboard")),
+        "Navlight Center": _mp_point(mass_navlight_each, pos("Navlight Center")),
+        "Navlight Hstab": _mp_point(mass_navlight_each, pos("Navlight Hstab")),
+        "Motor L": _mp_point(0.5 * float(masses.get("mass_motors_mounted", 0)), pos("Motor L")),
+        "Motor R": _mp_point(0.5 * float(masses.get("mass_motors_mounted", 0)), pos("Motor R")),
+        "ESC L": _mp_point(0.5 * float(masses.get("mass_escs", masses.get("mass_esc", 0))), pos("ESC L")),
+        "ESC R": _mp_point(0.5 * float(masses.get("mass_escs", masses.get("mass_esc", 0))), pos("ESC R")),
+        "Prop L": _mp_disk_x(0.5 * float(masses.get("mass_propellers", 0)), pos("Prop L"), radius_m=max(prop_radius, 0.01)),
+        "Prop R": _mp_disk_x(0.5 * float(masses.get("mass_propellers", 0)), pos("Prop R"), radius_m=max(prop_radius, 0.01)),
         # Structural interfaces
-        "Superstructure L": _mp_point(superstructure_each_mass, superstructure_xyz_L),
-        "Superstructure R": _mp_point(superstructure_each_mass, superstructure_xyz_R),
-        "Power board L": _mp_point(power_board_each_mass, power_board_xyz_L),
-        "Power board R": _mp_point(power_board_each_mass, power_board_xyz_R),
-        "Boom_vstab interface L": _mp_point(boom_vstab_each_mass, boom_vstab_xyz_L),
-        "Boom_vstab interface R": _mp_point(boom_vstab_each_mass, boom_vstab_xyz_R),
-        "Vstab_hstab interface L": _mp_point(vstab_hstab_each_mass, vstab_hstab_xyz_L),
-        "Vstab_hstab interface R": _mp_point(vstab_hstab_each_mass, vstab_hstab_xyz_R),
+        "Superstructure L": _mp_point(superstructure_each_mass, pos("Superstructure L")),
+        "Superstructure R": _mp_point(superstructure_each_mass, pos("Superstructure R")),
+        "Power board L": _mp_point(power_board_each_mass, pos("Power board L")),
+        "Power board R": _mp_point(power_board_each_mass, pos("Power board R")),
+        "Boom_vstab interface L": _mp_point(boom_vstab_each_mass, pos("Boom_vstab interface L")),
+        "Boom_vstab interface R": _mp_point(boom_vstab_each_mass, pos("Boom_vstab interface R")),
+        "Vstab_hstab interface L": _mp_point(vstab_hstab_each_mass, pos("Vstab_hstab interface L")),
+        "Vstab_hstab interface R": _mp_point(vstab_hstab_each_mass, pos("Vstab_hstab interface R")),
     }
 
     mp_total = sum(mp_components.values(), MassProperties(mass=0.0))
@@ -274,22 +302,33 @@ def compute_and_embed_mass_properties(soln: dict) -> dict:
             "calculated": total_mass_calculated,
             "expected": total_mass_expected,
             "difference": total_mass_calculated - total_mass_expected,
-        }
+        },
+        # Per-component centers + editability, so the UI knows what can be dragged.
+        "positions": positions,
+        "applied_overrides": {
+            k: v for k, v in layout.items() if k in positions and positions[k]["draggable"] and v is not None
+        },
     }
     return mass_properties
 
 
+# Backwards-compatible alias for the previous public name.
+compute_and_embed_mass_properties = compute_mass_properties
+
+
 def main(soln_path: Path):
+    run_dir = soln_path.parent
     with open(soln_path, "r") as f:
         soln = json.load(f)
 
-    mass_properties = compute_and_embed_mass_properties(soln)
-    
-    # Write mass properties to a new JSON file
-    mass_properties_path = soln_path.parent / "mass_properties.json"
-    write_json(mass_properties_path, mass_properties, indent=2)
+    # Apply any persisted point-mass layout (dragged positions) from the run's state.json.
+    layout = load_layout(run_dir)
+    mass_properties = compute_mass_properties(soln, layout)
 
-    print(f"[postprocess] Mass properties written to: {mass_properties_path}")
+    # Consolidated per-run artifact: mass properties live inside state.json alongside `layout`.
+    update_state(run_dir, mass=mass_properties)
+
+    print(f"[postprocess] Mass properties written to: {state_path(run_dir)}")
 
 
 if __name__ == "__main__":
