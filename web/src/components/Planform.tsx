@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { RunState } from "../lib/types";
 import Field from "./Field";
+import { LABEL, MONO } from "../lib/ui";
 
 type Rect = { x: number; y: number; w: number; h: number; fill?: string };
 type Line = { x1: number; y1: number; x2: number; y2: number; dash?: boolean };
@@ -75,7 +76,7 @@ export default function Planform({ run }: { run: RunState }) {
   return (
     <div className="space-y-10">
       <div>
-        <h3 className="label mb-3">Aircraft dimensions</h3>
+        <h3 className={`${LABEL} mb-3`}>Aircraft dimensions</h3>
         <DimsTable
           dims={[
           ["Wingspan", b],
@@ -152,7 +153,7 @@ function View({
 
   return (
     <div>
-      <div className="label mb-3">{title}</div>
+      <div className={`${LABEL} mb-3`}>{title}</div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-h-[55vh]">
         {lines.map((l, i) => (
           <g key={i}>{L(l, { stroke: "var(--muted)", strokeWidth: 1.5, strokeDasharray: l.dash ? "6 6" : undefined })}</g>
@@ -168,7 +169,7 @@ function View({
               {on && L(d.edge, { stroke: HL, strokeWidth: 4 })}
               {/* dimension line + label */}
               {L(d.measure, { stroke: on ? HL : "var(--muted)", strokeWidth: on ? 2 : 1 })}
-              <text x={X(d.label.x)} y={Y(d.label.y)} fill={on ? HL : "var(--muted)"} fontSize="12" textAnchor={d.label.anchor ?? "middle"} className="mono">
+              <text x={X(d.label.x)} y={Y(d.label.y)} fill={on ? HL : "var(--muted)"} fontSize="12" textAnchor={d.label.anchor ?? "middle"} className={`${MONO}`}>
                 {d.label.text}
               </text>
               {/* invisible fat hit-line for easy hovering */}

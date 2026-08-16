@@ -6,9 +6,13 @@ import RunSwitcher from "./components/RunSwitcher";
 import { fetchManifest } from "./lib/data";
 import { useRunState } from "./lib/store";
 import { downloadJSON } from "./lib/download";
+import { BTN, BTN_ACCENT, BTN_ICON } from "./lib/ui";
 
 // Where the AircraftSim UI runs (override with VITE_AIRCRAFTSIM_URL at build time).
-const AIRCRAFTSIM_URL = import.meta.env.VITE_AIRCRAFTSIM_URL || "http://localhost:3001";
+// In local dev we fall back to localhost; in a production build the Simulate button is
+// hidden unless VITE_AIRCRAFTSIM_URL is explicitly set to a reachable deployment.
+const AIRCRAFTSIM_URL =
+  import.meta.env.VITE_AIRCRAFTSIM_URL || (import.meta.env.DEV ? "http://localhost:3001" : "");
 
 function PlaneIcon() {
   return (
@@ -22,10 +26,10 @@ function PlaneIcon() {
 function SimulateButton() {
   const match = useMatch("/run/:id");
   const id = match?.params.id;
-  if (!id) return null;
+  if (!id || !AIRCRAFTSIM_URL) return null;
   return (
     <button
-      className="btn btn-accent h-7 px-2.5 text-xs flex items-center gap-1.5"
+      className={BTN_ACCENT}
       onClick={() => window.open(`${AIRCRAFTSIM_URL}/?aircraft=${encodeURIComponent(id)}`, "_blank", "noopener")}
     >
       <PlaneIcon />
@@ -34,6 +38,19 @@ function SimulateButton() {
   );
 }
 
+// Sun/moon icons shared verbatim with AircraftSim so the toggle matches.
+const MOON = (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+  </svg>
+);
+const SUN = (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+  </svg>
+);
+
 function ThemeToggle() {
   const [light, setLight] = useState(() => localStorage.getItem("theme") === "light");
   useEffect(() => {
@@ -41,8 +58,9 @@ function ThemeToggle() {
     localStorage.setItem("theme", light ? "light" : "dark");
   }, [light]);
   return (
-    <button className="btn h-7 w-7 px-0 flex items-center justify-center" onClick={() => setLight((v) => !v)} title="Toggle theme">
-      {light ? "☾" : "☀"}
+    <button className={BTN_ICON} onClick={() => setLight((v) => !v)}
+      aria-label="Toggle theme" title="Toggle theme">
+      {light ? MOON : SUN}
     </button>
   );
 }
@@ -52,7 +70,7 @@ function HeaderTitle() {
   const match = useMatch("/run/:id");
   if (!match?.params.id) return null;
   return (
-    <div className="absolute left-1/2 -translate-x-1/2 text-[15px] font-semibold pointer-events-none">
+    <div className="hidden md:block absolute left-1/2 -translate-x-1/2 text-[15px] font-semibold pointer-events-none">
       {match.params.id}
     </div>
   );
@@ -73,7 +91,7 @@ function DownloadButton() {
   if (!run) return null;
   return (
     <button
-      className="btn h-7 px-2.5 text-xs"
+      className={BTN}
       onClick={() =>
         downloadJSON(`${run.run}.state.json`, {
           run: run.run,
@@ -106,14 +124,14 @@ function HomeRedirect() {
 
 export default function App() {
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
-      <header className="relative flex items-center gap-3 px-5 py-2 border-b border-[var(--border)] bg-[var(--bg)]">
-        <Link to="/" className="flex items-center gap-2 font-semibold">
+    <div className="h-dvh flex flex-col overflow-hidden">
+      <header className="relative flex flex-wrap items-center gap-x-3 gap-y-2 px-3 sm:px-5 py-2.5 border-b border-[var(--border)] bg-[var(--bg)]">
+        <Link to="/" className="flex items-center gap-2 font-semibold shrink-0">
           <EyeIcon />
           AircraftView
         </Link>
-        <img src="power.png" alt="power" className="h-6 w-auto" />
-        <Link to="/runs" className="text-sm text-[var(--muted)] hover:text-[var(--ink)]">
+        <img src="power.png" alt="power" className="h-6 w-auto hidden sm:block" />
+        <Link to="/runs" className="text-sm text-[var(--muted)] hover:text-[var(--ink)] shrink-0">
           All runs
         </Link>
         <RunSwitcher />

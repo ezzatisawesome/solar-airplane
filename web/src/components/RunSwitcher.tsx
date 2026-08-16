@@ -23,7 +23,7 @@ export default function RunSwitcher() {
       <select
         value={currentId}
         onChange={(e) => navigate(`/run/${e.target.value}`)}
-        className="bg-[var(--card-2)] border border-[var(--border)] rounded-md px-2 py-1 text-[var(--ink)]"
+        className="bg-[var(--card-2)] border border-[var(--border)] rounded-md px-2 py-1 text-[var(--ink)] max-w-[9rem] sm:max-w-none"
       >
         {runs.map((r) => (
           <option key={r.id} value={r.id}>

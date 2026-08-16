@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchManifest } from "../lib/data";
 import type { Manifest, ManifestEntry } from "../lib/types";
+import { MONO } from "../lib/ui";
 
 function fmt(v: number | null | undefined, digits = 2, suffix = "") {
   return v == null ? "—" : v.toFixed(digits) + suffix;
@@ -64,7 +65,7 @@ function Metric({ label, value }: { label: string; value: string }) {
   return (
     <>
       <dt className="text-[var(--muted)]">{label}</dt>
-      <dd className="text-right mono">{value}</dd>
+      <dd className={`text-right ${MONO}`}>{value}</dd>
     </>
   );
 }

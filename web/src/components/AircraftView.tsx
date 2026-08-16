@@ -5,6 +5,7 @@ import { TransformControls } from "three/addons/controls/TransformControls.js";
 import type { ComponentMP, RunState } from "../lib/types";
 import { applyLayout, type Layout } from "../lib/mass";
 import { colorFor, reconstructGeometry, type Geom } from "../lib/geometry";
+import { BTN, LABEL, MONO } from "../lib/ui";
 
 interface SceneApi {
   select: (name: string | null) => void;
@@ -36,6 +37,10 @@ export default function AircraftView({
   cbRef.current = onLayoutChange;
   const opacityRef = useRef(opacity);
   opacityRef.current = opacity;
+
+  // Overlay panels (view controls + mass balance) start collapsed on small screens so they
+  // don't cover the 3D canvas; open by default on wider viewports.
+  const [panelsOpen, setPanelsOpen] = useState(() => window.innerWidth >= 768);
 
   const [showDims, setShowDims] = useState(true);
   const dimsRef = useRef(showDims);
@@ -348,11 +353,11 @@ export default function AircraftView({
   }, [showDims]);
 
   return (
-    <div className="flex h-full min-h-0">
-      <aside className="w-64 flex flex-col min-h-0 border-r border-[var(--border)]">
+    <div className="flex flex-col md:flex-row h-full min-h-0">
+      <aside className="order-2 md:order-1 w-full md:w-64 flex flex-col min-h-0 flex-1 md:flex-none border-t md:border-t-0 md:border-r border-[var(--border)]">
         <div className="flex items-center justify-between px-3 py-2">
-          <span className="label">Elements</span>
-          <button className="btn h-6 px-2 text-xs" disabled={!dirty} onClick={() => apiRef.current?.reset()}>
+          <span className={`${LABEL}`}>Elements</span>
+          <button className={BTN} disabled={!dirty} onClick={() => apiRef.current?.reset()}>
             Reset
           </button>
         </div>
@@ -368,7 +373,7 @@ export default function AircraftView({
                 <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: el.color }} />
                 <span className="truncate flex-1">{el.name}</span>
                 {el.draggable && <span className="text-[var(--faint)] text-xs" title="movable">↔</span>}
-                <span className="mono text-xs text-[var(--muted)]">{el.mass.toFixed(2)}</span>
+                <span className={`${MONO} text-xs text-[var(--muted)]`}>{el.mass.toFixed(2)}</span>
               </button>
             </li>
           ))}
@@ -382,18 +387,29 @@ export default function AircraftView({
         </div>
       </aside>
 
-      <div className="flex-1 relative min-w-0 bg-[var(--bg)]">
+      <div className="order-1 md:order-2 relative min-w-0 bg-[var(--bg)] h-[55vh] shrink-0 md:h-auto md:flex-1">
         <div ref={mountRef} className="absolute inset-0 overflow-hidden" />
-        <div className="absolute top-3 right-3 w-56 flex flex-col gap-2">
+
+        {/* Toggle for the overlay panels — keeps the canvas usable on small screens. */}
+        <button
+          className={`${BTN} absolute top-2 right-2 z-10`}
+          onClick={() => setPanelsOpen((v) => !v)}
+        >
+          {panelsOpen ? "Hide panels" : "Panels"}
+        </button>
+
+        <div
+          className={`absolute top-11 right-2 w-44 sm:w-56 max-h-[calc(100%-3.5rem)] overflow-y-auto flex-col gap-2 ${panelsOpen ? "flex" : "hidden"}`}
+        >
           {/* View controls, stacked above the mass balance panel */}
           <div className="bg-[var(--card)] border border-[var(--border)] rounded-md px-3 py-2">
             <label className="flex items-center justify-between cursor-pointer mb-2">
-              <span className="label">Dimensions</span>
+              <span className={`${LABEL}`}>Dimensions</span>
               <input type="checkbox" checked={showDims} onChange={(e) => setShowDims(e.target.checked)} className="accent-white" />
             </label>
             <div className="flex items-center justify-between mb-1">
-              <span className="label">Structure opacity</span>
-              <span className="mono text-xs text-[var(--muted)]">{Math.round(opacity * 100)}%</span>
+              <span className={`${LABEL}`}>Structure opacity</span>
+              <span className={`${MONO} text-xs text-[var(--muted)]`}>{Math.round(opacity * 100)}%</span>
             </div>
             <input
               type="range"
@@ -411,12 +427,12 @@ export default function AircraftView({
           </div>
 
           <div className="bg-[var(--card)] border border-[var(--border)] rounded-md px-3 py-2">
-            <div className="label mb-1">Mass Balance</div>
+            <div className={`${LABEL} mb-1`}>Mass Balance</div>
           <Row label="Total" value={`${total.mass.toFixed(3)} kg`} />
           <Row label="CG x" value={`${total.x_cg.toFixed(4)} m`} />
           <Row label="CG y" value={`${total.y_cg.toFixed(4)} m`} />
           <Row label="CG z" value={`${total.z_cg.toFixed(4)} m`} />
-          <div className="label mt-2 mb-1">Moments of Inertia (kg·m²)</div>
+          <div className={`${LABEL} mt-2 mb-1`}>Moments of Inertia (kg·m²)</div>
           <Row label="Ixx" value={total.Ixx.toFixed(3)} />
           <Row label="Iyy" value={total.Iyy.toFixed(3)} />
           <Row label="Izz" value={total.Izz.toFixed(3)} />
@@ -434,7 +450,7 @@ function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between gap-6 py-0.5 text-xs">
       <span className="text-[var(--muted)]">{label}</span>
-      <b className="mono">{value}</b>
+      <b className={`${MONO}`}>{value}</b>
     </div>
   );
 }

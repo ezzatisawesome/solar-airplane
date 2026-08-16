@@ -2,6 +2,11 @@
 
 /* Fonts use the local system stack (no network dependency, works fully offline). */
 
+/* Token so the `font-mono` utility renders JetBrains Mono (former .mono/.label). */
+@theme {
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
 /* Design tokens mirrored from AircraftSim / guppi-cloud (OKLCH monochrome + cyan accent). */
 :root {
   color-scheme: dark;
@@ -68,71 +73,5 @@ body {
   background-color: oklch(0.708 0 0 / 55%);
 }
 
-/* Flat by default — no visible container boxes. */
-.card {
-  background: transparent;
-  border: none;
-  border-radius: 0;
-}
-.label {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--muted);
-}
-.mono {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-variant-numeric: tabular-nums;
-}
-.accent {
-  color: var(--accent-ink);
-}
-
-/* Tabs */
-.tab {
-  padding: 6px 14px;
-  border-radius: var(--radius);
-  font-size: 13px;
-  color: var(--muted);
-  cursor: pointer;
-  transition: background 150ms cubic-bezier(0.4, 0, 0.2, 1), color 150ms;
-}
-.tab:hover {
-  color: var(--ink);
-  background: var(--card-2);
-}
-.tab-active {
-  color: var(--ink);
-  background: var(--card-2);
-}
-
-/* Buttons */
-.btn {
-  height: 32px;
-  padding: 0 14px;
-  border-radius: var(--radius);
-  font-size: 13px;
-  font-weight: 500;
-  border: 1px solid var(--border);
-  background: var(--card-2);
-  color: var(--ink);
-  cursor: pointer;
-  transition: background 150ms;
-}
-.btn:hover {
-  background: oklch(0.24 0 0);
-}
-.btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-.btn-accent {
-  border-color: transparent;
-  background: var(--accent);
-  color: var(--accent-fg);
-  font-weight: 600;
-}
-.btn-accent:hover {
-  filter: brightness(0.9);
-}
+/* All former component classes (.card/.label/.mono/.accent/.tab/.btn) are now
+   plain Tailwind utilities in src/lib/ui.ts — nothing but tokens + base here. */

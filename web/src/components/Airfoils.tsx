@@ -1,4 +1,5 @@
 import type { Airfoil, RunState } from "../lib/types";
+import { LABEL } from "../lib/ui";
 
 /** 2D airfoil section outlines (Selig coordinates) for each lifting surface. */
 export default function Airfoils({ run }: { run: RunState }) {
@@ -30,7 +31,7 @@ function AirfoilPlot({ foil }: { foil: Airfoil }) {
   const d = pts.map((p, i) => `${i ? "L" : "M"}${tx(p[0]).toFixed(1)},${ty(p[1]).toFixed(1)}`).join(" ") + " Z";
   return (
     <div>
-      <div className="label mb-2">
+      <div className={`${LABEL} mb-2`}>
         {foil.surface} — <span className="text-[var(--ink)]">{foil.name}</span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full">

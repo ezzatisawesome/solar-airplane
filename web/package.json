@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "export": "../.venv/bin/python ../export_site.py",
+    "deploy": "npm run build && gh-pages -d dist -b main -r https://github.com/mojave-development/mojave-ghost.git -f",
     "test": "vitest run"
   },
   "dependencies": {
@@ -24,6 +25,7 @@
     "@types/react-dom": "^18.3.0",
     "@types/three": "^0.160.0",
     "@vitejs/plugin-react": "^4.3.0",
+    "gh-pages": "^6.3.0",
     "tailwindcss": "^4.1.0",
     "typescript": "^5.5.0",
     "vite": "^5.4.0",

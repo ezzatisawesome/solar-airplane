@@ -3,6 +3,7 @@ import {
   BarController, BarElement, CategoryScale, Chart, type ChartConfiguration,
   Filler, Legend, LinearScale, LineController, LineElement, PointElement, Tooltip,
 } from "chart.js";
+import { LABEL } from "../lib/ui";
 
 // Register every controller/element used anywhere in the app, once.
 Chart.register(
@@ -29,7 +30,7 @@ export default function ChartCanvas({
   }, [config]);
   return (
     <div>
-      {title && <h3 className="label mb-3">{title}</h3>}
+      {title && <h3 className={`${LABEL} mb-3`}>{title}</h3>}
       <div className={heightClass}>
         <canvas ref={ref} />
       </div>

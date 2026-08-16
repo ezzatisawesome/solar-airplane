@@ -3,6 +3,7 @@ import type { ChartConfiguration } from "chart.js";
 import type { RunState } from "../lib/types";
 import { MASS_COMPONENTS } from "../lib/compare";
 import ChartCanvas from "./ChartCanvas";
+import { BTN, BTN_ACCENT, LABEL, MONO } from "../lib/ui";
 
 // One color per component "floor" of the tower.
 const PALETTE = [
@@ -116,11 +117,11 @@ export default function MassCompare({ run }: { run: RunState }) {
 
       <div className="min-w-0">
         <div className="flex items-center gap-3 mb-2">
-          <h3 className="label">Comparison {DEV && "(edit as-built values, then save)"}</h3>
+          <h3 className={`${LABEL}`}>Comparison {DEV && "(edit as-built values, then save)"}</h3>
           {DEV && (
             <>
-              <button className="btn h-7 px-2.5 text-xs" onClick={addBuild}>+ Add build</button>
-              <button className="btn btn-accent h-7 px-2.5 text-xs" onClick={save} disabled={saving}>Save to builds.json</button>
+              <button className={BTN} onClick={addBuild}>+ Add build</button>
+              <button className={BTN_ACCENT} onClick={save} disabled={saving}>Save to builds.json</button>
               {msg && <span className="text-xs text-[var(--muted)]">{msg}</span>}
             </>
           )}
@@ -140,7 +141,7 @@ export default function MassCompare({ run }: { run: RunState }) {
             {rows.map((r) => (
               <tr key={r.key} className="border-b border-[var(--border)]/40">
                 <td className="py-1 text-[var(--muted)]">{r.label}</td>
-                <td className="py-1 text-right mono">{r.design.toFixed(3)}</td>
+                <td className={`py-1 text-right ${MONO}`}>{r.design.toFixed(3)}</td>
                 {builds.map((_, i) => (
                   <td key={i} className="py-1 text-right">
                     {DEV ? (
@@ -149,10 +150,10 @@ export default function MassCompare({ run }: { run: RunState }) {
                         step="0.001"
                         value={r.builds[i]}
                         onChange={(e) => setMass(i, r.key, e.target.value)}
-                        className="bg-[var(--card-2)] border border-[var(--border)] rounded px-2 py-0.5 text-right w-24 mono"
+                        className={`bg-[var(--card-2)] border border-[var(--border)] rounded px-2 py-0.5 text-right w-24 ${MONO}`}
                       />
                     ) : (
-                      <span className="mono">{r.builds[i].toFixed(3)}</span>
+                      <span className={`${MONO}`}>{r.builds[i].toFixed(3)}</span>
                     )}
                   </td>
                 ))}
@@ -171,7 +172,7 @@ function DeltaCell({ design, build }: { design: number; build: number }) {
   const pct = design ? (d / design) * 100 : build > 0 ? Infinity : 0;
   const cls = Math.abs(d) < 1e-6 ? "text-[var(--muted)]" : d > 0 ? "text-[var(--err)]" : "text-[var(--ok)]";
   return (
-    <td className={`py-1 text-right mono ${cls}`}>
+    <td className={`py-1 text-right ${MONO} ${cls}`}>
       {d > 0 ? "+" : ""}{d.toFixed(3)} {Number.isFinite(pct) ? `(${pct > 0 ? "+" : ""}${pct.toFixed(1)}%)` : ""}
     </td>
   );

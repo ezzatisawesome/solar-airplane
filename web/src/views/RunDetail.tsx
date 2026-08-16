@@ -10,6 +10,7 @@ import Airfoils from "../components/Airfoils";
 import Planform from "../components/Planform";
 import Field from "../components/Field";
 import { setRunState } from "../lib/store";
+import { LABEL, TAB, TAB_ACTIVE } from "../lib/ui";
 
 export default function RunDetail() {
   const { id = "" } = useParams();
@@ -53,7 +54,7 @@ export default function RunDetail() {
     <div className="h-full flex flex-col min-h-0 px-4 pb-4 pt-3 gap-3">
       <nav className="flex flex-wrap gap-1 border-b border-[var(--border)] pb-2">
         {tabs.map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id)} className={`tab ${tab === t.id ? "tab-active" : ""}`}>
+          <button key={t.id} onClick={() => setTab(t.id)} className={`${TAB} ${tab === t.id ? TAB_ACTIVE : ""}`}>
             {t.label}
           </button>
         ))}
@@ -92,7 +93,7 @@ function SpecSections({ tab, columns = 3 }: { tab?: SpecTab; columns?: 1 | 2 | 3
     <div className={`grid ${gridCls} gap-x-10 gap-y-6`}>
       {tab.sections.map((s) => (
         <div key={s.title}>
-          <h3 className="label mb-2">{s.title}</h3>
+          <h3 className={`${LABEL} mb-2`}>{s.title}</h3>
           <dl className="text-sm">
             {s.rows.map(([label, value]) => (
               <Field key={label} label={label} value={value} />
