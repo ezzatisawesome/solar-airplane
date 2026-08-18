@@ -1,7 +1,8 @@
 {
   "Meta": {
     "run_id": "run_h6ue",
-    "timestamp_utc": "2025-12-20T20:45:58.888776+00:00"
+    "timestamp_utc": "2025-12-20T20:45:58.888776+00:00",
+    "migrated_from_legacy": true
   },
   "Mission": {
     "mission_date": 100,
@@ -36,7 +37,9 @@
     "L": 92.91264528551064,
     "D": 3.17995450772898,
     "x_np": 0.18428717096948205,
-    "static_margin": 0.4071179987113746
+    "static_margin": 0.4071179987113746,
+    "Cmq": -10.423766304121422,
+    "Cm_de": 1.04831627900264
   },
   "Main Wing": {
     "wingspan": 5.9811210413592955,
@@ -47,7 +50,10 @@
     "b_w": 5.9843325496156465,
     "main_wing_area": 1.507259961663905,
     "main_wing_AR": 23.759827087064135,
-    "wing_airfoil": "s4110"
+    "wing_airfoil": "s4110",
+    "chord_tip": 0.1937353720185777,
+    "taper_ratio": 0.6249528331203578,
+    "dihedral_angle": 0.0
   },
   "HStab": {
     "hstab_AR": 11.00000009,
@@ -296,5 +302,16 @@
     "mass_boom_vstab_interfaces": 0.1,
     "mass_vstab_stab_interfaces": 0.06,
     "total_mass": 9.471217675182215
+  },
+  "Lateral_Directional_Stability": {
+    "Cnb": 0.028450554109968728,
+    "Clb": -0.0031888343472034537,
+    "Clp": -0.3781454806801739,
+    "Cnr": -0.003133784819070044,
+    "Clr": 0.2356428366697541,
+    "Cnp": -0.13482046380114565,
+    "spiral_criterion": -0.0066941761546315676,
+    "dihedral_angle": 0.0,
+    "Cl_da": 0.4468924433226879
   }
 }

@@ -5,7 +5,7 @@
     <mass_unit_to_kg>1</mass_unit_to_kg>
   </Units>
   <Plane>
-    <Name>Rev 6</Name>
+    <Name>Rev 7</Name>
     <Description />
     <Inertia>
       <Point_Mass>
@@ -26,43 +26,43 @@
       <Sections>
         <Section>
           <y_position>0.0</y_position>
-          <Chord>0.3206040769126686</Chord>
+          <Chord>0.45317441458673546</Chord>
           <xOffset>0.0</xOffset>
           <Dihedral>0.0</Dihedral>
-          <Twist>4.189153647088663</Twist>
+          <Twist>4.246251104371555</Twist>
           <Left_Side_FoilName>s4310</Left_Side_FoilName>
           <Right_Side_FoilName>s4310</Right_Side_FoilName>
           <x_number_of_panels>8</x_number_of_panels>
           <y_number_of_panels>8</y_number_of_panels>
         </Section>
         <Section>
-          <y_position>0.7812641976469317</y_position>
-          <Chord>0.3206040769126686</Chord>
+          <y_position>0.7480745361176319</y_position>
+          <Chord>0.45317441458673546</Chord>
           <xOffset>0.0</xOffset>
-          <Dihedral>1.998782629916412</Dihedral>
-          <Twist>4.189153647088663</Twist>
+          <Dihedral>1.9987826507599082</Dihedral>
+          <Twist>4.246251104371555</Twist>
           <Left_Side_FoilName>s4310</Left_Side_FoilName>
           <Right_Side_FoilName>s4310</Right_Side_FoilName>
           <x_number_of_panels>8</x_number_of_panels>
           <y_number_of_panels>8</y_number_of_panels>
         </Section>
         <Section>
-          <y_position>1.5625283952938633</y_position>
-          <Chord>0.2838808875986811</Chord>
+          <y_position>1.4961490722352637</y_position>
+          <Chord>0.3715742418076261</Chord>
           <xOffset>0.0</xOffset>
-          <Dihedral>1.9987826299164115</Dihedral>
-          <Twist>4.189153647088663</Twist>
+          <Dihedral>1.9987826507599078</Dihedral>
+          <Twist>4.246251104371555</Twist>
           <Left_Side_FoilName>s4110</Left_Side_FoilName>
           <Right_Side_FoilName>s4110</Right_Side_FoilName>
           <x_number_of_panels>8</x_number_of_panels>
           <y_number_of_panels>8</y_number_of_panels>
         </Section>
         <Section>
-          <y_position>3.1250567905877267</y_position>
-          <Chord>0.2104350091261465</Chord>
+          <y_position>2.9922981444705274</y_position>
+          <Chord>0.20837500761176786</Chord>
           <xOffset>0.0</xOffset>
           <Dihedral>0</Dihedral>
-          <Twist>4.189153647088663</Twist>
+          <Twist>4.246251104371555</Twist>
           <Left_Side_FoilName>s4110</Left_Side_FoilName>
           <Right_Side_FoilName>s4110</Right_Side_FoilName>
           <x_number_of_panels>8</x_number_of_panels>
@@ -73,7 +73,7 @@
     <wing>
       <Name>Horizontal Stabilizer</Name>
       <Type>ELEVATOR</Type>
-      <Position>1.1778837146222407,0.0,0.4173153378538231</Position>
+      <Position>1.1727430009448896,0.0,0.486808577154999</Position>
       <Tilt_angle>0.0</Tilt_angle>
       <Symetric>True</Symetric>
       <isFin>false</isFin>
@@ -81,21 +81,21 @@
       <Sections>
         <Section>
           <y_position>0.0</y_position>
-          <Chord>0.13499999003869648</Chord>
+          <Chord>0.24340429598889723</Chord>
           <xOffset>0.0</xOffset>
           <Dihedral>0.0</Dihedral>
-          <Twist>3.901294954006404</Twist>
+          <Twist>3.3759985092380944</Twist>
           <Left_Side_FoilName>naca0010</Left_Side_FoilName>
           <Right_Side_FoilName>naca0010</Right_Side_FoilName>
           <x_number_of_panels>8</x_number_of_panels>
           <y_number_of_panels>8</y_number_of_panels>
         </Section>
         <Section>
-          <y_position>0.7812641976469317</y_position>
-          <Chord>0.13499999003869648</Chord>
+          <y_position>0.7480745361176319</y_position>
+          <Chord>0.24340429598889723</Chord>
           <xOffset>0.0</xOffset>
           <Dihedral>0</Dihedral>
-          <Twist>3.901294954006404</Twist>
+          <Twist>3.3759985092380944</Twist>
           <Left_Side_FoilName>naca0010</Left_Side_FoilName>
           <Right_Side_FoilName>naca0010</Right_Side_FoilName>
           <x_number_of_panels>8</x_number_of_panels>
@@ -106,7 +106,7 @@
     <wing>
       <Name>Vertical Stabilizer (XFLR5)</Name>
       <Type>FIN</Type>
-      <Position>1.1073048766359037,0.0,0.0</Position>
+      <Position>1.1118919294431706,0.0,0.0</Position>
       <Tilt_angle>0.0</Tilt_angle>
       <Symetric>true</Symetric>
       <isFin>true</isFin>
@@ -114,7 +114,7 @@
       <Sections>
         <Section>
           <y_position>0.0</y_position>
-          <Chord>0.28231535194534785</Chord>
+          <Chord>0.24340428600687586</Chord>
           <xOffset>0.0</xOffset>
           <Dihedral>0.0</Dihedral>
           <Twist>0.0</Twist>
@@ -124,9 +124,9 @@
           <y_number_of_panels>8</y_number_of_panels>
         </Section>
         <Section>
-          <y_position>0.4173153378538231</y_position>
-          <Chord>0.13499999003869648</Chord>
-          <xOffset>0.07057883798633702</xOffset>
+          <y_position>0.486808577154999</y_position>
+          <Chord>0.24340429598889723</Chord>
+          <xOffset>0.06085107150171898</xOffset>
           <Dihedral>0</Dihedral>
           <Twist>0.0</Twist>
           <Left_Side_FoilName>naca0010</Left_Side_FoilName>

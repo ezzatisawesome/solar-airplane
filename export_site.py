@@ -76,6 +76,12 @@ def export_run(run_dir: Path) -> dict:
 
     _write_json(PUBLIC_DIR / "runs" / f"{run_dir.name}.json", state)
 
+    # Emit a standalone mass_properties.json beside soln.json. The sibling
+    # AircraftSim (AircraftView's Simulate button, ?aircraft=<run_id>) derives the
+    # flown airframe from soln.json + this file; without it a run isn't flyable.
+    if (state.get("massProperties") or {}).get("total"):
+        _write_json(run_dir / "mass_properties.json", state["massProperties"])
+
     meta = state["soln"].get("Meta", {}) or {}
     return {
         "id": run_dir.name,

@@ -4,7 +4,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import type { ComponentMP, RunState } from "../lib/types";
 import { applyLayout, type Layout } from "../lib/mass";
-import { colorFor, reconstructGeometry, solarCells, type Geom } from "../lib/geometry";
+import { colorFor, parseGeometry, reconstructGeometry, solarCells, type Geom } from "../lib/geometry";
 import { BTN, LABEL, MONO } from "../lib/ui";
 
 interface SceneApi {
@@ -222,20 +222,12 @@ export default function AircraftView({
     dimsGroup.visible = dimsRef.current;
     group.add(dimsGroup);
 
-    const so = run.soln;
-    const mw = so["Main Wing"] || {};
-    const gg = so.Geometry || {};
-    const hh = so.HStab || {};
-    const vv = so["V Stab"] || {};
-    const b = mw.wingspan || 0;
-    const c = mw.chordlen || 0;
-    const bl = gg.boom_length || 0;
-    const boomY = gg.boom_y || 0;
-    const hs = hh.hstab_span || 0;
-    const vspan = vv.vstab_span || 0;
-    const vrc = vv.vstab_root_chord || 0;
+    const {
+      b, cRoot: c, boomLen: bl, boomY, fuseLen,
+      hstabSpan: hs, hstabChord: htc, vstabSpan: vspan, vstabRootChord: vrc,
+    } = parseGeometry(run.soln);
     const wingX = mp.positions["Main wing"]?.xyz[0] ?? 0;
-    const hx = bl + vrc / 4;
+    const hx = bl + vrc / 4 + 0.25 * htc; // hstab quarter-chord (matches the CG-anchored mesh)
 
     // Each dimension bundles a line + number label, linked to the component(s) it measures.
     const dimObjects: { line: THREE.Line; label: THREE.Sprite; targets: string[] }[] = [];
@@ -274,7 +266,7 @@ export default function AircraftView({
     addDim([0, boomY, 0.06], [bl, boomY, 0.06], `${bl.toFixed(2)} m`, [bl / 2, boomY, 0.14], ["Boom R", "Boom L"]);
     addDim([bl, boomY, 0], [bl, boomY, vspan], `${vspan.toFixed(2)} m`, [bl, boomY, vspan + 0.1], ["Vertical stabilizer R", "Vertical stabilizer L"]);
     addDim([hx, -hs / 2, vspan], [hx, hs / 2, vspan], `${hs.toFixed(2)} m`, [hx, 0, vspan + 0.14], ["Horizontal stabilizer"]);
-    addDim([-0.5, -boomY, -0.1], [0, -boomY, -0.1], "0.50 m", [-0.25, -boomY, -0.2], ["Fuselage L", "Fuselage R"]);
+    addDim([-fuseLen, -boomY, -0.1], [0, -boomY, -0.1], `${fuseLen.toFixed(2)} m`, [-fuseLen / 2, -boomY, -0.2], ["Fuselage L", "Fuselage R"]);
 
     // Translate gizmo (arrows). Lives in the (unrotated) scene; local space aligns to aircraft axes.
     const gizmo = new TransformControls(camera, renderer.domElement);

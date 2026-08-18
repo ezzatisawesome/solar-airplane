@@ -24,36 +24,60 @@ export type Geom =
       mass: number;
     };
 
+// The airframe dimensions every renderer reads out of soln (top-view planform, side view,
+// 3D mesh, and the dimension annotations all destructure from here). One place for the soln
+// key names + fallbacks so the four views can't drift apart.
+export type GeomParams = {
+  b: number; cRoot: number; cTip: number;
+  boomLen: number; boomY: number; fuseLen: number;
+  hstabSpan: number; hstabChord: number;
+  vstabSpan: number; vstabRootChord: number;
+  dihedralRad: number;
+};
+
+export function parseGeometry(soln: Record<string, any>): GeomParams {
+  const mw = soln["Main Wing"] || {};
+  const g = soln.Geometry || {};
+  const h = soln.HStab || {};
+  const v = soln["V Stab"] || {};
+  const cRoot = mw.chordlen || 0;
+  return {
+    b: mw.wingspan || mw.b_w || 0,
+    cRoot,
+    cTip: mw.chord_tip || cRoot, // rev7 taper; falls back to rectangular
+    boomLen: g.boom_length || 0,
+    boomY: g.boom_y || 0,
+    fuseLen: g.fuselage_length || 0.5, // rev7: read from soln, was hardcoded 0.5
+    hstabSpan: h.hstab_span || 0,
+    hstabChord: h.hstab_chordlen || 0,
+    vstabSpan: v.vstab_span || 0,
+    vstabRootChord: v.vstab_root_chord || 0,
+    dihedralRad: ((mw.dihedral_angle || 0) * Math.PI) / 180,
+  };
+}
+
 export function reconstructGeometry(
   soln: Record<string, any>,
   mp: MassProperties,
   fuselageRadius: number,
 ): Record<string, Geom> {
-  const mainWing = soln["Main Wing"] || {};
-  const geometry = soln.Geometry || {};
-  const hstab = soln.HStab || {};
-  const vstab = soln["V Stab"] || {};
   const power = soln.Power || {};
   const propulsion = soln.Propulsion || {};
   const airfoils = soln.airfoils || {};
 
-  const b_w = mainWing.wingspan || mainWing.b_w || 0;
-  const c_root = mainWing.chordlen || 0;
-  const c_tip = mainWing.chord_tip || c_root; // rev7 taper; falls back to rectangular
-  const boom_len = geometry.boom_length || 0;
-  const boom_y = geometry.boom_y || 0;
-  const vstab_span = vstab.vstab_span || 0;
-  const vstab_root_chord = vstab.vstab_root_chord || 0;
-  const hstab_chord = hstab.hstab_chordlen || 0;
-  const hstab_span = hstab.hstab_span || 0;
+  const {
+    b: b_w, cRoot: c_root, cTip: c_tip, boomLen: boom_len, boomY: boom_y,
+    vstabSpan: vstab_span, vstabRootChord: vstab_root_chord,
+    hstabChord: hstab_chord, hstabSpan: hstab_span, fuseLen: fuselage_length,
+    dihedralRad: dih_wing,
+  } = parseGeometry(soln);
 
   const t_wing = (airfoils.wing_t_over_c || 0.12) * c_root;
   const t_tail = (airfoils.tail_t_over_c || 0.1) * Math.max(hstab_chord, 1e-6);
-  const boom_radius = geometry.boom_radius || 0.01;
+  const boom_radius = (soln.Geometry || {}).boom_radius || 0.01;
   const solar_side = power.solar_panel_side_length || 0.125;
-  const fuselage_length = geometry.fuselage_length || 0.5; // rev7: read from soln, was hardcoded 0.5
   const batt_box = [0.2, 0.1, 0.03];
-  const solar_area = (power.solar_panels_n || 0) * solar_side * solar_side;
+  const solar_area = (power.solar_panel_n || 0) * solar_side * solar_side;
   const solar_mean_chord = solar_area / Math.max(b_w, 1e-6);
   const prop_radius = 0.5 * (propulsion.propeller_diameter || 0.4);
 
@@ -69,9 +93,8 @@ export function reconstructGeometry(
     if (name === "Main wing") {
       // Half-span sections: root -> inboard break (flat, full chord) -> tip (tapered, raised
       // by polyhedral). dihedral is applied only outboard of the break (boom_y).
-      const dih = ((mainWing.dihedral_angle || 0) * Math.PI) / 180;
       const s = b_w / 2;
-      const zTip = Math.sin(dih) * Math.max(s - boom_y, 0);
+      const zTip = Math.sin(dih_wing) * Math.max(s - boom_y, 0);
       const sections = [
         { y: 0, z: 0, chord: c_root },
         { y: boom_y, z: 0, chord: c_root },
@@ -83,7 +106,13 @@ export function reconstructGeometry(
         span: b_w, thickness: Math.max(t_wing, 0.005), sections, mass,
       };
     } else if (name === "Horizontal stabilizer") {
-      out[name] = { type: "box", center, Lx: hstab_chord, Ly: hstab_span, Lz: Math.max(t_tail, 0.003), mass };
+      // Render as a "wing" (rectangular) so it uses the SAME -0.4*chord LE-offset convention as
+      // the vertical fins -- otherwise a box centered on the CG sits ~0.06 m off the fin tops.
+      out[name] = {
+        type: "wing", center, axis: "y",
+        rootChord: Math.max(hstab_chord, 1e-6), tipChord: Math.max(hstab_chord, 1e-6),
+        span: hstab_span, thickness: Math.max(t_tail, 0.003), mass,
+      };
     } else if (name.includes("Vertical stabilizer")) {
       // Tapered fin: root chord at the boom, tip chord = hstab chord at the top.
       out[name] = {
@@ -126,17 +155,11 @@ export function solarCells(soln: Record<string, any>): {
   hstab: [number, number, number][];
   side: number;
 } {
-  const mw = soln["Main Wing"] || {};
-  const geo = soln.Geometry || {};
   const power = soln.Power || {};
   const hstab = soln.HStab || {};
   const airfoils = soln.airfoils || {};
-  const b = mw.wingspan || mw.b_w || 0;
+  const { b, cRoot, cTip, boomY: yBreak, dihedralRad: dih } = parseGeometry(soln);
   const s = b / 2;
-  const cRoot = mw.chordlen || 0;
-  const cTip = mw.chord_tip || cRoot;
-  const yBreak = geo.boom_y || 0;
-  const dih = ((mw.dihedral_angle || 0) * Math.PI) / 180;
   const pitch = 0.13;
   const side = 0.125;
   const x0 = -0.4 * cRoot; // match the lofted wing mesh origin (LE offset)
@@ -170,7 +193,8 @@ export function solarCells(soln: Record<string, any>): {
 
   // Spill the remaining budget onto the hstab. Cells sit on its forward panel-able band: a
   // ~10% LE margin then panels back to ~70% chord (the aft ~30% is the elevator keep-out),
-  // matching hstab_panel_frac = 0.6. Box-local frame: LE at x = -chord/2, top surface at +t/2.
+  // matching hstab_panel_frac = 0.6. Wing-local frame: LE at x = -0.4*chord (same convention
+  // as the hstab mesh), top surface at +t/2.
   const hChord = hstab.hstab_chordlen || 0;
   const hSpan = hstab.hstab_span || 0;
   const tTail = (airfoils.tail_t_over_c || 0.1) * Math.max(hChord, 1e-6);
@@ -178,7 +202,7 @@ export function solarCells(soln: Record<string, any>): {
   const hstabCells: [number, number, number][] = [];
   budget = nHstab; // hstab gets exactly the optimizer's overflow count
   if (budget > 0 && hChord > 0 && hSpan > 0) {
-    const xLE = -hChord / 2 + 0.1 * hChord;        // 10% LE margin
+    const xLE = -0.4 * hChord + 0.1 * hChord;      // LE at -0.4c (mesh convention) + 10% margin
     const nRows = Math.floor((0.6 * hChord) / pitch); // panel-able band is 60% of chord
     const nCols = Math.floor(hSpan / pitch);
     const y0 = -((nCols - 1) * pitch) / 2;          // centered spanwise
@@ -194,7 +218,7 @@ export function solarCells(soln: Record<string, any>): {
   return { wing, hstab: hstabCells, side };
 }
 
-export const CATEGORY_COLORS: Record<string, number> = {
+const CATEGORY_COLORS: Record<string, number> = {
   structure: 0x4a90e2,
   power: 0xe74c3c,
   avionics: 0x27ae60,

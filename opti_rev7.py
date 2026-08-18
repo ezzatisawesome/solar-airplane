@@ -8,8 +8,8 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 from lib.artifacts import process_raw_values, run_id_random, write_json
-from lib.exports import export_xflr5_xml_from_soln, export_cadquery_step
-from lib.models import apc_prop, hacker_motor_mass, hacker_motor_resistance, hacker_motor_i0
+from lib.exports import export_xflr5_xml_from_soln
+from lib.models import hacker_motor_resistance, hacker_motor_i0
 
 
 
@@ -185,8 +185,8 @@ print(
 
 ### VARIABLES
 ## Performance
-airspeed = opti.variable(init_guess=12.0, lower_bound=5, upper_bound=15, scale=5, category="airspeed")
-togw_design = opti.variable(init_guess=10.0, lower_bound=1, upper_bound=togw_max, scale=1, category="togw_max")
+airspeed = opti.variable(init_guess=10.7, lower_bound=5, upper_bound=15, scale=5, category="airspeed")
+togw_design = opti.variable(init_guess=10.5, lower_bound=1, upper_bound=togw_max, scale=1, category="togw_max")
 power_out_max = opti.variable(init_guess=500, lower_bound=25*16, scale=100, category="power_out_max")
 
 ## Propulsion
@@ -194,17 +194,29 @@ propeller_diameter = opti.parameter(value=0.4)  # m (fixed, ~16 in)
 motor_kv = opti.variable(init_guess=500, lower_bound=50, upper_bound=2000, scale=100, category="motor_kv")
 
 ## Avionics
-solar_panel_n = opti.variable(init_guess=72, lower_bound=10, scale=10, category="solar_panel_n")
-battery_capacity = opti.variable(init_guess=700, lower_bound=100, scale=100, category="battery_capacity") # NAMEPLATE installed energy in Wh (drives mass + pack count)
+solar_panel_n = opti.variable(init_guess=88, lower_bound=10, scale=10, category="solar_panel_n")
+battery_capacity = opti.variable(init_guess=1450, lower_bound=100, scale=100, category="battery_capacity") # NAMEPLATE installed energy in Wh (drives mass + pack count)
 # Deliverable energy after the usable-energy derate. SOC dynamics/bounds use this; mass and
 # num_packs stay on nameplate (you carry the full pack mass but only get derate x energy).
 battery_capacity_effective = battery_capacity * battery_usable_derate
-battery_states = opti.variable(n_vars=N, init_guess=500, scale=100, category="battery_states")
+battery_states = opti.variable(n_vars=N, init_guess=850, scale=100, category="battery_states")
+# Seed battery_states with a realistic day/night SOC sawtooth (numeric march at nominal loads).
+# A flat 850 Wh seed violates every one of the 179 recursion equalities at once, which leaves
+# IPOPT stuck at inf_pr ~ 12 Wh; a physically-shaped seed lets it close feasibility.
+_cap_nom = 1450.0 * battery_usable_derate
+_area_nom = 88.0 * (0.125 ** 2)
+_gen_nom = solar_flux_profile * _area_nom * solar_cell_efficiency_profile  # W
+_soc_seed = onp.empty(N)
+_soc_seed[0] = 0.85 * _cap_nom
+for _i in range(N - 1):
+    _net = (_gen_nom[_i] - 45.0) * dt / 3600.0  # 45 W nominal total load
+    _soc_seed[_i + 1] = onp.clip(_soc_seed[_i] + _net, 0.2 * _cap_nom, _cap_nom)
+opti.set_initial(battery_states, _soc_seed)
 
 ## Aerodynamics
 # Main wing
-wingspan = opti.variable(init_guess=5.6, lower_bound=2, upper_bound=9.0, scale=1, category="wingspan")  # rev7: cap 9 m (heavier realistic tails need a bit more span at 8 packs)
-chordlen = opti.variable(init_guess=0.32, lower_bound=0.05, scale=0.1, category="chordlen")
+wingspan = opti.variable(init_guess=5.9, lower_bound=2, upper_bound=9.0, scale=1, category="wingspan")  # rev7: cap 9 m (heavier realistic tails need a bit more span at 8 packs)
+chordlen = opti.variable(init_guess=0.45, lower_bound=0.05, scale=0.1, category="chordlen")
 struct_defined_aoa = opti.variable(init_guess=4.7, lower_bound=0, upper_bound=10, scale=1, category="struct_aoa")
 # Real CG (rev7): cg_le_dist is now a VARIABLE tied by a fixed-point constraint to the actual
 # mass-weighted CG of all components (computed after the mass rollup). The battery position is
@@ -331,88 +343,52 @@ hor_stabilizer = asb.Wing(
     ],
 ).translate([boom_length + vstab_root_chord/4, 0, vstab_span])
 
-vert_stabilizer_L = asb.Wing(
-    name="Vertical Stabilizer L",
-    symmetric=False,
-    xsecs=[
-        asb.WingXSec(
-            xyz_le=[0, 0, 0],
-            chord=vstab_root_chord,
-            twist=0,
-            airfoil=tail_airfoil,
-        ),
-        asb.WingXSec(
-            xyz_le=[vstab_root_chord/4, 0, vstab_span],
-            chord=hstab_chordlen,
-            twist=0,
-            airfoil=tail_airfoil,
-        ),
-    ],
-).translate([boom_length, boom_y, 0])
+# Both fins are identical trapezoids mirrored across XZ — build once, place by sign.
+def _make_fin(name, sign):
+    return asb.Wing(
+        name=name,
+        symmetric=False,
+        xsecs=[
+            asb.WingXSec(xyz_le=[0, 0, 0], chord=vstab_root_chord, twist=0, airfoil=tail_airfoil),
+            asb.WingXSec(xyz_le=[vstab_root_chord/4, 0, vstab_span], chord=hstab_chordlen, twist=0, airfoil=tail_airfoil),
+        ],
+    ).translate([boom_length, sign * boom_y, 0])
 
-vert_stabilizer_R = asb.Wing(
-    name="Vertical Stabilizer R",
-    symmetric=False,
-    xsecs=[
-        asb.WingXSec(
-            xyz_le=[0, 0, 0],
-            chord=vstab_root_chord,
-            twist=0,
-            airfoil=tail_airfoil,
-        ),
-        asb.WingXSec(
-            xyz_le=[vstab_root_chord/4, 0, vstab_span],
-            chord=hstab_chordlen,
-            twist=0,
-            airfoil=tail_airfoil,
-        ),
-    ],
-).translate([boom_length, -boom_y, 0])
+vert_stabilizer_L = _make_fin("Vertical Stabilizer L", +1)
+vert_stabilizer_R = _make_fin("Vertical Stabilizer R", -1)
 
-# Booms
-boom_L = asb.Fuselage(
-    name="Boom L",
-    xsecs=[
-        asb.FuselageXSec(xyz_c=[boom_length * xi, boom_y, -0.02], radius=boom_radius)
-        for xi in np.cosspace(0, 1, 20)
-    ],
-)
-boom_R = asb.Fuselage(
-    name="Boom R",
-    xsecs=[
-        asb.FuselageXSec(xyz_c=[boom_length * xi, -boom_y, -0.02], radius=boom_radius)
-        for xi in np.cosspace(0, 1, 20)
-    ],
-)
+# Booms and pods are L/R mirror pairs — build each once, place by sign.
+_dae51 = asb.Airfoil("dae51")   # hoisted: one instance, not one per section
 
 
-left_pod = asb.Fuselage(  # left pod fuselage
-    name="Left Fuse",
-    xsecs=[
-        asb.FuselageXSec(
-            xyz_c=[fuselage_length * xi - fuselage_length, boom_y, -0.02],
-            radius=0.4
-            * asb.Airfoil("dae51").local_thickness(
-                x_over_c=xi
-            ),  # pod fuselage of length `fuselage_length`, starting at LE going forward
-        )
-        for xi in np.cosspace(0, 1, 30)
-    ],
-)
+def _make_boom(name, sign):
+    return asb.Fuselage(
+        name=name,
+        xsecs=[
+            asb.FuselageXSec(xyz_c=[boom_length * xi, sign * boom_y, -0.02], radius=boom_radius)
+            for xi in np.cosspace(0, 1, 20)
+        ],
+    )
 
-right_pod = asb.Fuselage(  # right pod fuselage
-    name="Right Fuselage",
-    xsecs=[
-        asb.FuselageXSec(
-            xyz_c=[fuselage_length * xi - fuselage_length, -boom_y, -0.02],
-            radius=0.4
-            * asb.Airfoil("dae51").local_thickness(
-                x_over_c=xi
-            ),  # pod fuselage of length `fuselage_length`, starting at LE going forward
-        )
-        for xi in np.cosspace(0, 1, 30)
-    ],
-)
+
+def _make_pod(name, sign):
+    # pod fuselage of length `fuselage_length`, starting at the LE going forward
+    return asb.Fuselage(
+        name=name,
+        xsecs=[
+            asb.FuselageXSec(
+                xyz_c=[fuselage_length * xi - fuselage_length, sign * boom_y, -0.02],
+                radius=0.4 * _dae51.local_thickness(x_over_c=xi),
+            )
+            for xi in np.cosspace(0, 1, 30)
+        ],
+    )
+
+
+boom_L = _make_boom("Boom L", +1)
+boom_R = _make_boom("Boom R", -1)
+left_pod = _make_pod("Left Fuse", +1)
+right_pod = _make_pod("Right Fuselage", -1)
 
 # Model the airplane.
 airplane = asb.Airplane(
@@ -436,9 +412,37 @@ aero = vlm.run_with_stability_derivatives(
     alpha=True,
     beta=True,
     p=True,   # rev7: needed for roll damping Clp (roll-rate authority, note #1)
-    q=False,
+    q=True,   # pitch damping Cmq -- exported for the JSBSim flight model (AircraftSim)
     r=True,   # rev7: needed for spiral-mode diagnostic (Cnr, Clr)
 )
+
+### DRAG BREAKDOWN
+# AeroBuildup returns a per-component drag buildup: every wing/fuselage carries a
+# PROFILE (skin-friction + form) drag, and the whole aircraft carries a single lift-
+# dependent INDUCED drag. We tally these into a table for the report + web display.
+# Component order matches the airplane definition:
+#   wings     = [main_wing, hor_stabilizer, vert_stabilizer_L, vert_stabilizer_R]
+#   fuselages = [left_pod, right_pod, boom_L, boom_R]
+_drag_comp_names = [
+    "main_wing", "hstab", "vstab_L", "vstab_R",   # wings
+    "pod_L", "pod_R", "boom_L", "boom_R",         # fuselages
+]
+_drag_comps = [*aero["wing_aero_components"], *aero["fuselage_aero_components"]]
+assert len(_drag_comps) == len(_drag_comp_names), "drag component names out of sync with airplane"
+# qS from the aggregate so CD contributions use AeroBuildup's own reference area.
+_qS = aero["D"] / aero["CD"]
+drag_breakdown = {
+    "components": [
+        {"name": name, "D_profile": comp.D, "CD_profile": comp.D / _qS}
+        for name, comp in zip(_drag_comp_names, _drag_comps)
+    ],
+    "D_profile_total": aero["D_profile"],
+    "D_induced": aero["D_induced"],
+    "D_total": aero["D"],
+    "CD_profile_total": aero["D_profile"] / _qS,
+    "CD_induced": aero["D_induced"] / _qS,
+    "CD_total": aero["CD"],
+}
 
 
 
@@ -453,6 +457,8 @@ Clb = aero["Clb"]  # dihedral effect (<0 stable)
 Clp = aero["Clp"]  # roll damping (<0)
 Cnr = aero["Cnr"]  # yaw damping (<0)
 Clr = aero["Clr"]  # roll due to yaw rate
+Cnp = aero["Cnp"]  # yaw due to roll rate (adverse/proverse yaw)
+Cmq = aero["Cmq"]  # pitch damping (<0) -- from q=True above, for the JSBSim model
 
 # Spiral-mode diagnostic (reported, not constrained): spiral is stable when
 # Clb * Cnr - Cnb * Clr > 0. Weathercock + dihedral together drive this positive.
@@ -498,13 +504,25 @@ Cm_de = tail_efficiency * V_H * a_hstab * elevator_tau   # elevator pitch contro
 # keeping the prop near its efficiency peak instead of stuck off-design.
 advance_ratio = opti.variable(init_guess=0.6, lower_bound=0.25, upper_bound=0.90, scale=0.1, category="advance_ratio")
 prop_pitch_diam = opti.variable(init_guess=0.6, lower_bound=0.40, upper_bound=0.85, scale=0.1, category="prop_P_over_D")
-eta_prop_peak = 0.80        # peak propulsive efficiency for this prop class at low Re
-J_peak = 0.90 * prop_pitch_diam   # peak-efficiency advance ratio scales with pitch (APC-class fit)
-J_width = 0.45              # curve width (eta -> ~0 at J = J_peak +/- J_width)
-eta_prop = eta_prop_peak * (1 - ((advance_ratio - J_peak) / J_width) ** 2)  # parabolic APC-class map
+# eta_prop(J) surrogate calibrated to APC-E 2-blade low-Re behavior (FLAGGED: fit, not table).
+# Anchored to the prop's PITCH: thrust falls to zero near the windmill advance ratio
+# J_windmill ~ 1.1*(P/D) (a bit past geometric pitch), and efficiency peaks around 75% of that.
+# So eta -> 0 AT the windmill point (physical), instead of the old symmetric parabola that ran
+# past it. The optimizer picks P/D so the operating J sits near the peak.
+eta_prop_peak = 0.80              # peak propulsive efficiency for this prop class at low Re
+J_windmill = 1.10 * prop_pitch_diam       # zero-thrust advance ratio (scales with pitch)
+J_peak = 0.75 * J_windmill                # peak-efficiency J (~75% of windmill)
+J_width = J_windmill - J_peak             # high side hits eta=0 exactly at the windmill point
+# Floor at 0.15: the parabola goes negative far off-peak, and shaft power = thrust*V/eta_prop
+# would blow up (NaN). A real prop below ~0.15 efficiency is unusable anyway; the optimizer
+# stays near the peak regardless.
+eta_prop = np.maximum(eta_prop_peak * (1 - ((advance_ratio - J_peak) / J_width) ** 2), 0.15)
 prop_pitch_in = prop_pitch_diam * (propeller_diameter / 0.0254)  # selected pitch in inches (report)
 rpm_cruise = 60 * airspeed / (advance_ratio * propeller_diameter)
-power_shaft_cruise = (aero["D"] / propeller_n) * airspeed / eta_prop   # shaft power per motor
+# Guard drag positive: AeroBuildup can return D<0 on intermediate iterates, and the motor
+# resistance model (power^-0.68) would then NaN. Floor it (restores the original guard).
+_drag_per_motor = np.maximum(aero["D"], 0.1) / propeller_n
+power_shaft_cruise = _drag_per_motor * airspeed / eta_prop   # shaft power per motor
 Q = power_shaft_cruise / (2 * np.pi * rpm_cruise / 60)
 Kt = 60 / (2 * np.pi * motor_kv)
 # Total motor current = torque current (Q/Kt) + no-load current I0. At night cruise Q is
@@ -516,6 +534,12 @@ motor_resistance = hacker_motor_resistance(power_shaft_cruise * 2.5, motor_kv)
 esc_efficiency = 0.92
 power_cruise = (power_shaft_cruise + (i_cruise**2) * motor_resistance) / esc_efficiency
 
+# Motor terminal-voltage feasibility: the voltage the ESC must supply = back-EMF (rpm/Kv) plus
+# the IR drop (i*R). If it exceeds the available bus, that operating point can't exist. Cruise
+# must fit within the nominal 6S bus; enforced in CONSTRAINTS below.
+bus_v_climb_max = 25.2  # V, fully-charged 6S bus (used for the climb feasibility check)
+v_motor_cruise = i_cruise * motor_resistance + rpm_cruise / motor_kv
+
 # Propeller tip mach limit.
 propeller_tip_mach = 0.7  # From Dongjoon, 4/30/20
 propeller_rads_per_sec = propeller_tip_mach * operating_atm.speed_of_sound() / (propeller_diameter / 2)
@@ -523,20 +547,40 @@ propeller_rpm_max = propeller_rads_per_sec * 30 / np.pi
 
 # Climb.
 thrust_climb = togw_design * g * np.sin(min_climb_angle * np.pi / 180) + aero["D"]
+# Climb motor operating point (same prop rpm, higher torque) -> required terminal voltage must
+# fit within the fully-charged 25.2 V bus, else the climb thrust is unachievable.
+power_shaft_climb = (thrust_climb / propeller_n) * airspeed / eta_prop   # shaft W per motor
+Q_climb = power_shaft_climb / (2 * np.pi * rpm_cruise / 60)
+i_climb = Q_climb / Kt + motor_i0
+v_motor_climb = i_climb * motor_resistance + rpm_cruise / motor_kv
 
 
 
 ### POWER
-# Charge power is limited to the Amprius pack's 0.25C spec: P_charge_max = 0.25 * capacity[Wh]
-# (in watts). Midday solar surplus above this can't be stored -> it's wasted, which the
-# softmin(charge_power, P_charge_max) captures. Discharge (negative) is unlimited by this.
-charge_power_max = battery_charge_c_rate * battery_capacity  # W
-# Battery internal resistance (I2R): Amprius SA03 pack ~0.045 ohm; packs in parallel divide it.
-# R_bank = 0.045 / n_packs = 0.045 * pack_energy_Wh / capacity. Loss = (P/V_bus)^2 * R_bank,
-# and it ALWAYS reduces the battery's net gain (stored less when charging, drained more when
-# discharging), so net_to_battery = charge_power - I2R_loss in both directions.
+def _soft_min_cap(a, cap, width=20.0):
+    # Overflow-safe smooth min(a, cap): a - softplus(a - cap). softplus is evaluated in the
+    # numerically-stable max(z,0)+log1p(exp(-|z|)) form so exp() never overflows (unlike
+    # np.softmin with hardness on ~1000 Wh args, which under/overflowed to NaN).
+    z = (a - cap) / width
+    softplus = width * (np.maximum(z, 0.0) + np.log(1.0 + np.exp(-np.abs(z))))
+    return a - softplus
+
+charge_power_max = battery_charge_c_rate * battery_capacity  # W, 0.25C constant-current limit
 pack_r_internal_ohm = 0.045
 r_bank = pack_r_internal_ohm * pack_energy_Wh / battery_capacity  # ohm (packs in parallel)
+# FIX #3: Battery OCV vs SOC. The 6S bus sags toward 19.2 V when empty (20% SOC) and rises to
+# 25.2 V full (nominal 22.2 V mid-SOC). Linear approx. Used for BOTH the I2R current (a fuller
+# battery -> higher V -> lower current -> lower loss) and the CV charge taper below.
+bus_v_empty, bus_v_full = 19.2, 25.2
+def bus_voltage_at(soc_frac):
+    return bus_v_empty + (bus_v_full - bus_v_empty) * (soc_frac - 0.20) / 0.80
+# FIX #1: daily climb energy debit -- potential energy to reach loiter altitude divided by the
+# drivetrain efficiency (eta_prop * ~0.85 motor+ESC), deducted once at dawn.
+climb_altitude_gain = 300.0  # m daily climb to loiter (FLAGGED)
+e_climb_wh = togw_design * g * climb_altitude_gain / (eta_prop * 0.85) / 3600.0  # Wh
+# Dawn = SOC trough (start of day) -- where the one-time climb debit lands. Taken from the nominal
+# SOC march so it tracks the true diurnal phase regardless of the flux array's phasing.
+i_dawn = int(onp.argmin(_soc_seed))
 for i in range(N-1):
     solar_flux = solar_flux_profile[i]  # W / m^2 (numeric constant)
     solar_area = solar_panel_n * solar_panel_side_length**2 # m^2
@@ -544,11 +588,21 @@ for i in range(N-1):
     power_generated = solar_flux * solar_area * solar_cell_efficiency_profile[i] / energy_generation_margin
     power_used = (power_cruise*propeller_n + 8 + 1)  # 8W avionics, 1W for NavLights
     charge_power = power_generated - power_used                          # W (>0 charging, <0 discharging)
-    charge_power_capped = np.softmin(charge_power, charge_power_max, hardness=0.1)  # 0.25C charge limit
-    i2r_loss = (charge_power_capped / battery_voltage) ** 2 * r_bank     # W, always a loss
-    net_energy = (charge_power_capped - i2r_loss) * (dt / 3600)  # Wh
+    # Clamp SOC to [0.10, 1.0] so v_bus stays positive and <= bus_v_full at infeasible iterates
+    # (hard min/max -> no NaN/overflow). At the solution the SOC constraints keep it in [0.2,1.0].
+    soc_frac = np.minimum(np.maximum(battery_states[i] / battery_capacity_effective, 0.10), 1.0)
+    v_bus = bus_voltage_at(soc_frac)  # OCV: bus sags when empty -> higher current -> more I2R loss
+    # Charge cap = min(0.25C CC limit, CV taper). CV acceptable current = (Vmax - Vbus)/R, so as
+    # the pack fills (Vbus -> Vmax) the charge it accepts -> 0. Hard mins (fmin) -> overflow-safe.
+    cv_power_limit = v_bus * np.maximum(bus_v_full - v_bus, 0.0) / r_bank
+    charge_cap = np.minimum(charge_power_max, cv_power_limit)
+    charge_power_capped = np.minimum(charge_power, charge_cap)            # cap charging (unlimited discharge)
+    i2r_loss = (charge_power_capped / v_bus) ** 2 * r_bank               # W, always a loss (uses OCV bus)
+    climb_debit = e_climb_wh if i == i_dawn else 0.0                     # Wh, one-time dawn climb debit
+    net_energy = (charge_power_capped - i2r_loss) * (dt / 3600) - climb_debit  # Wh
 
-    battery_update = np.softmin(battery_states[i] + net_energy, battery_capacity_effective, hardness=10)
+    # Smooth, overflow-safe cap at full capacity (surplus solar is dumped once the pack fills).
+    battery_update = _soft_min_cap(battery_states[i] + net_energy, battery_capacity_effective)
     opti.subject_to(battery_states[i+1] == battery_update)
 
 
@@ -588,22 +642,16 @@ mass_telemtry = 0.03 # 915Mhz telemetry module.
 mass_receiver = 0.02 # Radio receiver.
 mass_navlights = 0.01 * 4 # Four navlights.
 mass_pitot = 0.01 # Pitot tube.
-mass_avionics = mass_fc + mass_gps + mass_telemtry + mass_receiver + mass_power_board + mass_navlights + mass_pitot
+mass_avionics = mass_fc + mass_gps + mass_telemtry + mass_receiver + mass_navlights + mass_pitot  # power board counted separately (was double-counted)
 
 # Actuators
 mass_servos = .02 * 4 # 20g a servo
 
-# Propulsion
-# mass_motor_raw = hacker_motor_mass(
-#     max_power=power_out_max,
-#     kv=motor_kv
-# )
+# Propulsion (measured/catalog masses per unit, x propeller_n)
 mass_motor_raw = 0.275
-mass_motors_mounted = mass_motor_raw * 1.1 * propeller_n # marign to account for motor mounts.
-# mass_esc = propulsion_electric.mass_ESC(max_power=power_out_max)
-mass_escs = 0.030 * propeller_n # Single ESC.
-# mass_propellers = apc_prop(propeller_diameter)
-mass_propellers = 0.055 * propeller_n # Single propeller.
+mass_motors_mounted = mass_motor_raw * 1.1 * propeller_n  # +10% for mounts
+mass_escs = 0.030 * propeller_n
+mass_propellers = 0.055 * propeller_n
 
 # Structures
 mass_main_wing =  main_wing.area("wetted")*1.2 * 0.70 # 700g/m^2 planform (realistic; wing is ~2.5 kg, not buildable lighter)
@@ -685,10 +733,11 @@ opti.subject_to(aero["Cm"] == 0)
 opti.subject_to(aero["CL"] <= CLmax_cruise)
 
 # Propulsion
-opti.subject_to(rpm_cruise <= motor_kv * battery_voltage)  # Motor no-load speed limit
+opti.subject_to(v_motor_cruise <= battery_voltage)   # cruise: ESC voltage within nominal 6S bus
+opti.subject_to(v_motor_climb <= bus_v_climb_max)    # climb: within fully-charged 6S bus (thrust achievable)
 opti.subject_to(propeller_rpm_max >= rpm_cruise)
 opti.subject_to(power_out_max >= power_cruise * propeller_n)
-opti.subject_to(power_out_max >= thrust_climb * airspeed)
+opti.subject_to(power_out_max >= thrust_climb * airspeed / (eta_prop * esc_efficiency))  # electrical watts, same domain as cruise
 
 # Stall-speed margin (equivalent to constraining required CL below CLmax at cruise)
 V_stall = np.sqrt(2 * (togw_design * g) / (operating_atm.density() * S_w * CLmax_cruise))
@@ -727,13 +776,17 @@ hstab_panel_capacity = hstab_panel_area * panel_packing_eff / panel_pitch**2    
 usable_panel_area = (2 * _panel_area_available + hstab_panel_area) * panel_packing_eff
 opti.subject_to(solar_panel_n * panel_pitch**2 <= usable_panel_area)  # panels must physically fit (row-aware)
 # Split the solved cell count: fill the wing first, overflow onto the hstab (reported numbers).
-panels_on_wing = np.softmin(solar_panel_n, wing_panel_capacity, hardness=0.5)
-panels_on_hstab = solar_panel_n - panels_on_wing
+# Fill the wing first; overflow above wing capacity goes to the hstab, capped at what the hstab
+# can physically hold (hstab_panel_capacity, which is ~0 when the hstab chord is too short for a
+# panel row). Report-only, so hard min/max is fine. Viewer reads these exact numbers.
+_overflow = np.maximum(solar_panel_n - wing_panel_capacity, 0.0)
+panels_on_hstab = np.minimum(_overflow, hstab_panel_capacity)
+panels_on_wing = solar_panel_n - panels_on_hstab
 # Root chord must fit at least the 2 inboard rows (plus a little for the aileron behind them).
 opti.subject_to(chordlen >= solar_panel_n_rows * panel_pitch + 0.03)
 # Taper must leave the tip at least one panel-row wide (keeps the taper physical).
 opti.subject_to(chord_tip >= panel_pitch)
-opti.subject_to(hstab_chordlen >= 0.135) # 13.5cm so the hstab can carry solar panels + elevator + manufacturing
+opti.subject_to(hstab_chordlen >= 0.22)  # >=22cm so the 60% panel band (>=0.13m) fits a full row of cells
 opti.subject_to(vstab_root_chord >= hstab_chordlen)  # enforce an actual taper (root >= tip) and avoid negative root chord
 
 # Stability — longitudinal
@@ -753,10 +806,14 @@ opti.subject_to(roll_rate >= roll_rate_target)   # aileron roll authority (note 
 # Elevator must trim the CL range within +/-15 deg (this pushes back on very high static margin).
 opti.subject_to(Cm_de * elevator_defl_max >= static_margin * elevator_dCL_trim)
 
-# Power (SOC window on DELIVERABLE energy, FIX #6)
+# Power (SOC window on DELIVERABLE energy)
 opti.subject_to(battery_states >= battery_capacity_effective * (1-allowable_battery_depth_of_discharge))
 opti.subject_to(battery_states <= battery_capacity_effective)
 opti.subject_to(battery_states[0] <= battery_states[N-1])
+# NOTE: no explicit daily-refill constraint. Minimizing span (hence solar area + battery mass)
+# already drives the smallest pack that is fully cycled -- min SOC floors at 0.20 and the peak
+# naturally reaches ~0.95, so the pack does not carry dead capacity. A fixed-index refill target
+# only mis-pinned a morning point and inflated span with no physical benefit.
 opti.subject_to(num_packs <= 8)
 # Optional integer-pack pin for a discrete-reality solve (env FIXED_PACKS=2/3/4...).
 if fixed_packs is not None:
@@ -770,50 +827,58 @@ opti.minimize(wingspan)
 
 try:
     sol = opti.solve(max_iter=5000)
+    _bs = sol.value(battery_states); _cap = sol.value(battery_capacity_effective)
+    print(f"[SOC] min={_bs.min()/_cap:.3f}  peak={_bs.max()/_cap:.3f} (i={int(_bs.argmax())})  dawn(i={i_dawn})={_bs[i_dawn]/_cap:.3f}  start={_bs[0]/_cap:.3f} end={_bs[-1]/_cap:.3f}")
 except Exception as e:
     print(f"[solve] failed: {e}")
     print("\n[DEBUG] Variable values at failure:")
-    print(f"  airspeed: {opti.debug.value(airspeed):.3f} m/s")
-    # print(f"  alpha_cruise: {opti.debug.value(alpha_cruise):.3f} deg")
-    print(f"  togw_design: {opti.debug.value(togw_design):.3f} kg")
-    print(f"  power_out_max: {opti.debug.value(power_out_max):.3f} W")
-    print(f"  solar_panel_n: {opti.debug.value(solar_panel_n):.3f}")
-    print(f"  battery_capacity: {opti.debug.value(battery_capacity):.3f} Wh")
-
+    # (label, expr, format) — format is applied to opti.debug.value(expr).
+    _debug_vars = [
+        ("airspeed", airspeed, "{:.3f} m/s"),
+        ("togw_design", togw_design, "{:.3f} kg"),
+        ("power_out_max", power_out_max, "{:.3f} W"),
+        ("solar_panel_n", solar_panel_n, "{:.3f}"),
+        ("battery_capacity", battery_capacity, "{:.3f} Wh"),
+    ]
     battery_states_vals = opti.debug.value(battery_states)
-    print(f"  battery_states min: {float(onp.min(battery_states_vals)):.3f} Wh")
-    print(f"  battery_states max: {float(onp.max(battery_states_vals)):.3f} Wh")
-    print(f"  battery_states[0]: {float(battery_states_vals[0]):.3f} Wh")
-    print(f"  battery_states[-1]: {float(battery_states_vals[-1]):.3f} Wh")
-
-    print(f"  wingspan: {opti.debug.value(wingspan):.3f} m")
-    print(f"  chordlen: {opti.debug.value(chordlen):.3f} m")
-    print(f"  struct_defined_aoa: {opti.debug.value(struct_defined_aoa):.3f} deg")
-    print(f"  hstab_AR: {opti.debug.value(hstab_AR):.3f}")
-    print(f"  hstab_aoa: {opti.debug.value(hstab_aoa):.3f} deg")
-    print(f"  boom_length: {opti.debug.value(boom_length):.3f} m")
-
-    print(f"  num_packs: {opti.debug.value(num_packs):.3f}")
-    print(f"  cg_le_dist: {opti.debug.value(cg_le_dist):.3f} m")
-    print(f"  boom_y: {opti.debug.value(boom_y):.3f} m")
-    print(f"  total_mass: {opti.debug.value(total_mass):.3f} kg")
-    print(f"  static_margin: {opti.debug.value(static_margin):.3f}")
-    print(f"  dihedral_angle: {opti.debug.value(dihedral_angle):.3f} deg")
-    print(f"  V_V: {opti.debug.value(V_V):.4f}")
-    print(f"  vstab_AR: {opti.debug.value(vstab_AR):.3f}")
-    print(f"  Cnb: {opti.debug.value(Cnb):.4f} /rad (min {Cnb_min})")
-    print(f"  Clb: {opti.debug.value(Clb):.4f} /rad (max {Clb_max})")
-    print(f"  Clp: {opti.debug.value(Clp):.4f} /rad")
-    print(f"  spiral_criterion: {opti.debug.value(spiral_criterion):.5f}")
-    print(f"  aileron_chord_ratio: {opti.debug.value(aileron_chord_ratio):.3f}")
-    print(f"  Cl_da: {opti.debug.value(Cl_da):.4f} /rad")
+    _debug_vars += [
+        ("battery_states min", float(onp.min(battery_states_vals)), "{:.3f} Wh"),
+        ("battery_states max", float(onp.max(battery_states_vals)), "{:.3f} Wh"),
+        ("battery_states[0]", float(battery_states_vals[0]), "{:.3f} Wh"),
+        ("battery_states[-1]", float(battery_states_vals[-1]), "{:.3f} Wh"),
+        ("wingspan", wingspan, "{:.3f} m"),
+        ("chordlen", chordlen, "{:.3f} m"),
+        ("struct_defined_aoa", struct_defined_aoa, "{:.3f} deg"),
+        ("hstab_AR", hstab_AR, "{:.3f}"),
+        ("hstab_aoa", hstab_aoa, "{:.3f} deg"),
+        ("boom_length", boom_length, "{:.3f} m"),
+        ("num_packs", num_packs, "{:.3f}"),
+        ("cg_le_dist", cg_le_dist, "{:.3f} m"),
+        ("boom_y", boom_y, "{:.3f} m"),
+        ("total_mass", total_mass, "{:.3f} kg"),
+        ("static_margin", static_margin, "{:.3f}"),
+        ("dihedral_angle", dihedral_angle, "{:.3f} deg"),
+        ("V_V", V_V, "{:.4f}"),
+        ("vstab_AR", vstab_AR, "{:.3f}"),
+        ("Cnb", Cnb, f"{{:.4f}} /rad (min {Cnb_min})"),
+        ("Clb", Clb, f"{{:.4f}} /rad (max {Clb_max})"),
+        ("Clp", Clp, "{:.4f} /rad"),
+        ("spiral_criterion", spiral_criterion, "{:.5f}"),
+        ("aileron_chord_ratio", aileron_chord_ratio, "{:.3f}"),
+        ("Cl_da", Cl_da, "{:.4f} /rad"),
+        ("L_H", L_H, "{:.3f} m"),
+        ("L_V", L_V, "{:.3f} m"),
+        ("mass_wires", mass_wires, "{:.3f} kg"),
+        ("power_cruise", power_cruise, "{:.3f} W"),
+        ("power_shaft_cruise", power_shaft_cruise, "{:.3f} W"),
+        ("aero Cm", aero["Cm"], "{:.6f}"),
+    ]
+    # `float(...)` entries are already resolved; only CasADi exprs need debug.value.
+    for label, expr, fmt in _debug_vars:
+        val = expr if isinstance(expr, float) else opti.debug.value(expr)
+        print(f"  {label}: " + fmt.format(val))
+    # roll_rate needs a degrees conversion around the resolved value, so it stays inline.
     print(f"  roll_rate: {onp.degrees(opti.debug.value(roll_rate)):.2f} deg/s (target {onp.degrees(roll_rate_target):.1f})")
-    print(f"  L_H: {opti.debug.value(L_H):.3f} m")
-    print(f"  L_V: {opti.debug.value(L_V):.3f} m")
-    print(f"  mass_wires: {opti.debug.value(mass_wires):.3f} kg")
-    print(f"  power_cruise: {opti.debug.value(power_cruise):.3f} W")
-    print(f"  power_shaft_cruise: {opti.debug.value(power_shaft_cruise):.3f} W")
-    print(f"  aero Cm: {opti.debug.value(aero['Cm']):.6f}")
     sol = None
 
 
@@ -838,7 +903,6 @@ report_raw = {
         "speed_of_sound": operating_atm.speed_of_sound(),
     },
     "Performance": {
-        # "alpha_cruise": alpha_cruise,
         "airspeed": airspeed,
         "thrust_cruise": aero["D"],
         "thrust_climb": thrust_climb,
@@ -860,7 +924,10 @@ report_raw = {
         "D": aero["D"],
         "x_np": aero["x_np"],
         "static_margin": static_margin,
+        "Cmq": Cmq,                       # pitch damping (<0), for the JSBSim flight model
+        "Cm_de": Cm_de,                   # elevator pitch control power /rad (analytic, rev7)
     },
+    "Drag": drag_breakdown,
     "Lateral_Directional_Stability": {
         "Cnb": Cnb,                       # weathercock (>0 stable), target >= Cnb_min
         "Cnb_min": Cnb_min,
@@ -869,6 +936,7 @@ report_raw = {
         "Clp": Clp,                       # roll damping
         "Cnr": Cnr,                       # yaw damping
         "Clr": Clr,
+        "Cnp": Cnp,                       # yaw due to roll rate (adverse/proverse yaw)
         "spiral_criterion": spiral_criterion,  # >0 spiral-stable
         "dihedral_angle": dihedral_angle,
         "roll_rate_rad_s": roll_rate,
@@ -997,20 +1065,6 @@ else:
         export_xflr5_xml_from_soln(airplane_sol=airplane_sol, soln=soln, out_path=run_dir / "aircraft.xml")
     except Exception as e:
         print(f"[export_xflr5_xml_from_soln] skipped due to error: {e}")
-    
-    # # Export CAD as STEP file.
-    # try:
-    #     export_cadquery_step(airplane_sol=airplane_sol, out_path=run_dir / "airplane.step")
-    # except Exception as e:
-    #     print(f"[export_cadquery_step] skipped due to error: {e}")
-    
-    # # Save AeroSandbox airplane object.
-    # try:
-    #     airplane_sol.save(filename=str(run_dir / "airplane.aero"))
-    # except Exception as e:
-    #     print(f"[airplane.save] skipped due to error: {e}")
-    
-    # print(f"[artifacts] wrote: {run_dir / 'soln.json'}")
 
     # Draw airplane (needs the optional `pyvista` viewer; skip cleanly if absent).
     try:

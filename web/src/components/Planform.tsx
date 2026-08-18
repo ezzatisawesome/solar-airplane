@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { RunState } from "../lib/types";
+import { parseGeometry } from "../lib/geometry";
 import Field from "./Field";
 import { LABEL, MONO } from "../lib/ui";
 
@@ -16,22 +17,10 @@ const HL = "#f59e0b"; // hover-highlight color
  * dimension highlights the aircraft edge it measures. Top and side views share one scale.
  */
 export default function Planform({ run }: { run: RunState }) {
-  const s = run.soln;
-  const mw = s["Main Wing"] || {};
-  const g = s.Geometry || {};
-  const h = s.HStab || {};
-  const v = s["V Stab"] || {};
-
-  const b = mw.wingspan || 0;
-  const c = mw.chordlen || 0;
-  const ct = mw.chord_tip || c; // rev7 tip chord (falls back to rectangular)
-  const htc = h.hstab_chordlen || 0.12;
-  const bl = g.boom_length || 0;
-  const by = g.boom_y || 0;
-  const hs = h.hstab_span || 0;
-  const vspan = v.vstab_span || 0;
-  const vrc = v.vstab_root_chord || 0;
-  const fuseLen = g.fuselage_length || 0.5;
+  const {
+    b, cRoot: c, cTip: ct, hstabChord: htc, boomLen: bl, boomY: by,
+    hstabSpan: hs, vstabSpan: vspan, vstabRootChord: vrc, fuseLen,
+  } = parseGeometry(run.soln);
   const fuseR = run.constants?.fuselage_radius ?? 0.04;
 
   if (!b || !c) return <div className="p-4 text-[var(--muted)]">No geometry for this run.</div>;
@@ -63,7 +52,7 @@ export default function Planform({ run }: { run: RunState }) {
     { x: -fuseLen, y: -fuseR, w: fuseLen, h: 2 * fuseR },
     { x: 0, y: -0.01, w: c, h: 0.02 },
     { x: bl, y: 0, w: vrc, h: vspan },
-    { x: hx, y: vspan - 0.01, w: 0.12, h: 0.02 },
+    { x: hx, y: vspan - 0.01, w: htc, h: 0.02 },  // hstab side view: real chord (was hardcoded 0.12)
   ];
   const sideLines: Line[] = [{ x1: 0.25 * c, y1: -0.02, x2: bl, y2: -0.02 }];
   const sideDims: Dim[] = [
@@ -93,7 +82,7 @@ export default function Planform({ run }: { run: RunState }) {
           ["Wingspan", b],
           ["Wing chord", c],
           ["H-stab span", hs],
-          ["H-stab chord", h.hstab_chordlen || 0],
+          ["H-stab chord", htc],
           ["V-stab height", vspan],
           ["V-stab root chord", vrc],
           ["Boom length", bl],

@@ -579,6 +579,13 @@ def build_specs_dict(soln: Mapping[str, Any], mass_properties: Mapping[str, Any]
     def section(title, rows):
         return {"title": title, "rows": [[lbl, val] for lbl, val in rows if val is not None]}
 
+    def _prop_spec(diam_m, pitch_in):
+        """Nearest catalog-style DxP label (inches), e.g. a 0.40 m / 13.4 in prop -> '16 x 13'."""
+        try:
+            return f"{round(float(diam_m) / 0.0254):.0f} x {round(float(pitch_in)):.0f} in"
+        except (TypeError, ValueError):
+            return None
+
     def mission_date(v):
         """soln stores mission date as a day-of-year integer; show a readable calendar date."""
         try:
@@ -588,6 +595,36 @@ def build_specs_dict(soln: Mapping[str, Any], mass_properties: Mapping[str, Any]
             return f"{d.strftime('%B %-d')} (day {doy})"
         except (TypeError, ValueError):
             return None if v is None else str(v)
+
+    def drag_rows():
+        """Per-component profile drag + profile/induced/total tally. Empty for pre-Drag runs."""
+        drag = soln.get("Drag") or {}
+        if not drag:
+            return []
+        total = drag.get("D_total")
+        try:
+            total = float(total) if total else None
+        except (TypeError, ValueError):
+            total = None
+
+        def pct(d):
+            """'D N / CD c / p%' where p is the share of total drag."""
+            share = "" if total in (None, 0) or d is None else f"  /  {d / total * 100:.1f}%"
+            return share
+
+        def line(d, cd):
+            return f"{fmt(d, '.2f', ' N')}  /  CD {fmt(cd, '.5f')}{pct(d)}"
+
+        rows = [
+            [f"{c.get('name', '?')} (profile)", line(c.get("D_profile"), c.get("CD_profile"))]
+            for c in (drag.get("components") or [])
+        ]
+        rows += [
+            ["Profile Drag (total)", line(drag.get("D_profile_total"), drag.get("CD_profile_total"))],
+            ["Induced Drag", line(drag.get("D_induced"), drag.get("CD_induced"))],
+            ["Total Drag", line(drag.get("D_total"), drag.get("CD_total"))],
+        ]
+        return rows
 
     tabs: List[Dict[str, Any]] = [
         {"id": "overview", "label": "Overview", "sections": [
@@ -617,6 +654,7 @@ def build_specs_dict(soln: Mapping[str, Any], mass_properties: Mapping[str, Any]
                 ["Static Margin", fmt(g("Aerodynamics", "static_margin"), ".3f")],
                 ["Neutral Point X", fmt(g("Aerodynamics", "x_np"), ".3f", " m")],
             ]),
+            section("Drag Breakdown", drag_rows()),
         ]},
         {"id": "geometry", "label": "Geometry & Mass", "sections": [
             section("Main Wing", [
@@ -657,8 +695,8 @@ def build_specs_dict(soln: Mapping[str, Any], mass_properties: Mapping[str, Any]
                 ["Thrust (Climb)", fmt(g("Performance", "thrust_climb"), ".2f", " N")],
             ]),
             section("Power", [
-                ["Solar Panels", fmt(g("Power", "solar_panels_n"), ".0f")],
-                ["Solar Cell Efficiency", fmt(g("Power", "solar_cell_efficiency"), ".3f")],
+                ["Solar Panels", fmt(g("Power", "solar_panel_n"), ".0f")],
+                ["Solar Cell Efficiency", fmt(g("Power", "cell_efficiency_stc"), ".3f")],
                 ["Battery Capacity", fmt(g("Power", "battery_capacity"), ".1f", " Wh")],
                 ["Battery Voltage", fmt(g("Power", "battery_voltage"), ".1f", " V")],
                 ["Battery Packs", fmt(g("Power", "num_packs"), ".0f")],
@@ -667,10 +705,14 @@ def build_specs_dict(soln: Mapping[str, Any], mass_properties: Mapping[str, Any]
             section("Propulsion", [
                 ["Propellers", fmt(g("Propulsion", "propeller_n"), ".0f")],
                 ["Propeller Diameter", fmt(g("Propulsion", "propeller_diameter"), ".3f", " m")],
+                ["Prop Spec (D x P)", _prop_spec(g("Propulsion", "propeller_diameter"), g("Propulsion", "prop_pitch_in"))],
+                ["Prop Pitch", fmt(g("Propulsion", "prop_pitch_in"), ".1f", " in")],
+                ["Pitch / Diameter", fmt(g("Propulsion", "prop_pitch_over_diam"), ".3f")],
+                ["Prop Efficiency (cruise)", fmt(g("Propulsion", "eta_prop"), ".3f")],
+                ["Advance Ratio", fmt(g("Propulsion", "advance_ratio"), ".3f")],
                 ["Motor Kv", fmt(g("Propulsion", "motor_kv"), ".0f", " rpm/V")],
                 ["Cruise RPM", fmt(g("Propulsion", "rpm_cruise"), ".0f")],
                 ["Cruise Current", fmt(g("Propulsion", "i_cruise"), ".2f", " A")],
-                ["Advance Ratio", fmt(g("Propulsion", "advanced_ratio"), ".3f")],
             ]),
         ]},
     ]

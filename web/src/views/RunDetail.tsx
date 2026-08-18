@@ -91,7 +91,7 @@ function SpecSections({ tab, columns = 3 }: { tab?: SpecTab; columns?: 1 | 2 | 3
         : "grid-cols-1 md:grid-cols-2 xl:grid-cols-3";
   return (
     <div className={`grid ${gridCls} gap-x-10 gap-y-6`}>
-      {tab.sections.map((s) => (
+      {tab.sections.filter((s) => s.rows.length > 0).map((s) => (
         <div key={s.title}>
           <h3 className={`${LABEL} mb-2`}>{s.title}</h3>
           <dl className="text-sm">
