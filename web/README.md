@@ -9,7 +9,7 @@ mass balance recomputes in the browser.
 ```bash
 cd web
 npm install
-npm run dev      # http://localhost:3002
+npm run dev      # http://localhost:3100
 ```
 
 `npm run dev` (and `npm run build`) **auto-run `export_site.py`** first, and the dev server

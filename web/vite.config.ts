@@ -9,6 +9,6 @@ import { exportData } from "./vite-plugin-export";
 export default defineConfig({
   base: "./",
   plugins: [exportData(), react(), tailwindcss()],
-  server: { port: 3002, strictPort: true },
+  server: { port: 3100, strictPort: true },
   build: { outDir: "dist" },
 });

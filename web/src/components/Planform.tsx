@@ -4,6 +4,7 @@ import Field from "./Field";
 import { LABEL, MONO } from "../lib/ui";
 
 type Rect = { x: number; y: number; w: number; h: number; fill?: string };
+type Poly = { points: [number, number][]; fill?: string };
 type Line = { x1: number; y1: number; x2: number; y2: number; dash?: boolean };
 // A dimension: the measurement line + its label, and the aircraft edge it refers to (highlighted on hover).
 type Dim = { measure: Line; label: { x: number; y: number; text: string; anchor?: "start" | "middle" | "end" }; edge: Line };
@@ -23,21 +24,27 @@ export default function Planform({ run }: { run: RunState }) {
 
   const b = mw.wingspan || 0;
   const c = mw.chordlen || 0;
+  const ct = mw.chord_tip || c; // rev7 tip chord (falls back to rectangular)
+  const htc = h.hstab_chordlen || 0.12;
   const bl = g.boom_length || 0;
   const by = g.boom_y || 0;
   const hs = h.hstab_span || 0;
   const vspan = v.vstab_span || 0;
   const vrc = v.vstab_root_chord || 0;
-  const fuseLen = 0.5;
+  const fuseLen = g.fuselage_length || 0.5;
   const fuseR = run.constants?.fuselage_radius ?? 0.04;
 
   if (!b || !c) return <div className="p-4 text-[var(--muted)]">No geometry for this run.</div>;
   const hx = bl + vrc / 4;
 
   // TOP VIEW: horizontal = span (y), vertical = streamwise (x, nose at top).
+  // Main wing: flat LE at x=0; inboard section (|y| <= by) is FULL chord (c); the taper
+  // starts at the inboard break and runs to the tip chord (ct).
+  const topPolys: Poly[] = [
+    { points: [[-b / 2, 0], [b / 2, 0], [b / 2, ct], [by, c], [-by, c], [-b / 2, ct]] },
+  ];
   const topRects: Rect[] = [
-    { x: -b / 2, y: 0, w: b, h: c },
-    { x: -hs / 2, y: hx, w: hs, h: 0.12 },
+    { x: -hs / 2, y: hx, w: hs, h: htc },
   ];
   const topLines: Line[] = [
     { x1: 0, y1: 0, x2: Math.max(c, hx + 0.12), y2: 0, dash: true },
@@ -67,11 +74,15 @@ export default function Planform({ run }: { run: RunState }) {
 
   const W = 900;
   const margin = 80;
-  const spanH = (r: Rect[], l: Line[]) => {
-    const xs = [...r.flatMap((x) => [x.x, x.x + x.w]), ...l.flatMap((x) => [x.x1, x.x2])];
+  const spanH = (r: Rect[], l: Line[], p: Poly[] = []) => {
+    const xs = [
+      ...r.flatMap((x) => [x.x, x.x + x.w]),
+      ...l.flatMap((x) => [x.x1, x.x2]),
+      ...p.flatMap((poly) => poly.points.map((pt) => pt[0])),
+    ];
     return Math.max(...xs) - Math.min(...xs);
   };
-  const scale = (W - 2 * margin) / Math.max(spanH(topRects, topLines), spanH(sideRects, sideLines) || 1);
+  const scale = (W - 2 * margin) / Math.max(spanH(topRects, topLines, topPolys), spanH(sideRects, sideLines) || 1);
 
   return (
     <div className="space-y-10">
@@ -92,7 +103,7 @@ export default function Planform({ run }: { run: RunState }) {
           ]}
         />
       </div>
-      <View title="Top view" rects={topRects} lines={topLines} dims={topDims} flipV W={W} margin={margin} scale={scale} />
+      <View title="Top view" rects={topRects} polys={topPolys} lines={topLines} dims={topDims} flipV W={W} margin={margin} scale={scale} />
       <View title="Side view" rects={sideRects} lines={sideLines} dims={sideDims} W={W} margin={margin} scale={scale} />
     </div>
   );
@@ -101,6 +112,7 @@ export default function Planform({ run }: { run: RunState }) {
 function View({
   title,
   rects,
+  polys = [],
   lines,
   dims,
   flipV = false,
@@ -110,6 +122,7 @@ function View({
 }: {
   title: string;
   rects: Rect[];
+  polys?: Poly[];
   lines: Line[];
   dims: Dim[];
   flipV?: boolean;
@@ -129,6 +142,7 @@ function View({
     push(r.x, r.y);
     push(r.x + r.w, r.y + r.h);
   }
+  for (const p of polys) for (const pt of p.points) push(pt[0], pt[1]);
   for (const l of lines) {
     push(l.x1, l.y1);
     push(l.x2, l.y2);
@@ -160,6 +174,9 @@ function View({
         ))}
         {rects.map((r, i) => (
           <rect key={i} x={X(r.x)} y={Y(flipV ? r.y : r.y + r.h)} width={r.w * scale} height={r.h * scale} fill={r.fill ?? "var(--card-2)"} stroke="var(--ink)" strokeWidth={1.5} />
+        ))}
+        {polys.map((p, i) => (
+          <polygon key={`p${i}`} points={p.points.map((pt) => `${X(pt[0])},${Y(pt[1])}`).join(" ")} fill={p.fill ?? "var(--card-2)"} stroke="var(--ink)" strokeWidth={1.5} />
         ))}
         {dims.map((d, i) => {
           const on = hover === i;

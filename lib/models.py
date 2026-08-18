@@ -93,6 +93,22 @@ def hacker_motor_resistance(max_power, kv):
     return 0.060 * (max_power ** -0.68) * (kv ** 0.62)
 
 
+def hacker_motor_i0(kv):
+    """
+    No-load (idle) current I0 in amps for a Hacker-class BLDC motor.
+
+    FLAGGED: anchored to the A40-12L V4 kv410 datasheet point (I0 = 1.04 A @
+    8.4 V) and scaled linearly with Kv (iron/windage losses rise with speed
+    for a given stator). Replace with a per-motor measured value when known.
+
+    Why it matters: at night cruise the propeller torque is tiny, so the
+    torque-producing current Q/Kt is small and I0 becomes a *large* fraction
+    of the motor current. Omitting it understates night bus watts — the one
+    quantity that actually binds this design.
+    """
+    return 1.04 * (kv / 410.0)
+
+
 
 
 ### CONSTANTS

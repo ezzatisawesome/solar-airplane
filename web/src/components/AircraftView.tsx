@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import type { ComponentMP, RunState } from "../lib/types";
 import { applyLayout, type Layout } from "../lib/mass";
-import { colorFor, reconstructGeometry, type Geom } from "../lib/geometry";
+import { colorFor, reconstructGeometry, solarCells, type Geom } from "../lib/geometry";
 import { BTN, LABEL, MONO } from "../lib/ui";
 
 interface SceneApi {
@@ -38,10 +38,6 @@ export default function AircraftView({
   const opacityRef = useRef(opacity);
   opacityRef.current = opacity;
 
-  // Overlay panels (view controls + mass balance) start collapsed on small screens so they
-  // don't cover the 3D canvas; open by default on wider viewports.
-  const [panelsOpen, setPanelsOpen] = useState(() => window.innerWidth >= 768);
-
   const [showDims, setShowDims] = useState(true);
   const dimsRef = useRef(showDims);
   dimsRef.current = showDims;
@@ -59,6 +55,8 @@ export default function AircraftView({
       }))
       .sort((a, b) => a.category.localeCompare(b.category) || b.mass - a.mass);
   }, [run]);
+
+  const maxMass = useMemo(() => Math.max(0, ...elements.map((e) => e.mass)), [elements]);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -109,8 +107,52 @@ export default function AircraftView({
       else if (g.type === "cylinder") {
         geometry = new THREE.CylinderGeometry(g.radius, g.radius, g.length, 20);
         geometry.rotateZ(Math.PI / 2);
+      } else if (g.type === "wing" && g.sections && g.sections.length >= 2) {
+        // Lofted surface from spanwise sections -> shows taper AND polyhedral (z rise).
+        // Mirror the half-span sections across the centerline, flat LE at x=0.
+        const half = g.sections;
+        const full = [...half.slice(1).reverse().map((s) => ({ ...s, y: -s.y })), ...half];
+        const x0 = -0.4 * g.rootChord; // roughly center chord on the CG
+        const pos: number[] = [];
+        const idx: number[] = [];
+        for (const s of full) {
+          pos.push(x0, s.y, s.z);                 // LE
+          pos.push(x0 + s.chord, s.y, s.z);       // TE
+        }
+        for (let i = 0; i < full.length - 1; i++) {
+          const a = 2 * i, b = 2 * i + 1, c = 2 * (i + 1), d = 2 * (i + 1) + 1;
+          idx.push(a, b, d, a, d, c); // two triangles per panel (LE_i,TE_i,TE_i+1 / LE_i,TE_i+1,LE_i+1)
+        }
+        geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+        geometry.setIndex(idx);
+        geometry.computeVertexNormals();
+      } else if (g.type === "wing") {
+        // Tapered planform: flat LE at x=0, chord tapers from root to tip. Built in the
+        // (x=chord, span) plane and extruded by thickness; fins are rotated span -> z.
+        const { rootChord: cr, tipChord: ct, span: sp, thickness: th } = g;
+        const shape = new THREE.Shape();
+        if (g.axis === "y") {
+          // horizontal surface: flat LE at x=0, symmetric double taper (tip chord at both ends)
+          shape.moveTo(0, -sp / 2);
+          shape.lineTo(0, sp / 2);
+          shape.lineTo(ct, sp / 2);
+          shape.lineTo(cr, 0);
+          shape.lineTo(ct, -sp / 2);
+        } else {
+          // vertical fin: root (cr) at bottom span=-sp/2, tip (ct = hstab chord) at top.
+          // Vertical trailing edge at x=cr; raked leading edge (not a square front).
+          shape.moveTo(0, -sp / 2);       // LE root (bottom, front)
+          shape.lineTo(cr, -sp / 2);      // TE root (bottom, back)
+          shape.lineTo(cr, sp / 2);       // TE tip  (top, back)  -> vertical TE
+          shape.lineTo(cr - ct, sp / 2);  // LE tip  (top, front) -> raked LE
+        }
+        shape.closePath();
+        geometry = new THREE.ExtrudeGeometry(shape, { depth: th, bevelEnabled: false });
+        geometry.translate(-0.4 * cr, 0, -th / 2); // roughly center chord + thickness on CG
+        if (g.axis === "z") geometry.rotateX(Math.PI / 2); // span y -> z, root stays at bottom
       } else geometry = new THREE.SphereGeometry(g.radius, 16, 12);
-      const mesh = new THREE.Mesh(geometry, new THREE.MeshPhongMaterial({ color }));
+      const mesh = new THREE.Mesh(geometry, new THREE.MeshPhongMaterial({ color, side: THREE.DoubleSide }));
       mesh.position.set(g.center[0], g.center[1], g.center[2]);
       return mesh;
     };
@@ -124,6 +166,7 @@ export default function AircraftView({
       setEmissive(mesh, mesh.userData.draggable ? 0x2ecc71 : 0x000000, mesh.userData.draggable ? 0.16 : 0);
 
     for (const [name, g] of Object.entries(geom)) {
+      if (name === "Solar cells") continue; // drawn as an actual cell grid below
       const info = mp.positions[name];
       const mesh = makeMesh(g, colorFor(name, info?.category));
       mesh.userData = { name, draggable: info?.draggable === true };
@@ -138,6 +181,32 @@ export default function AircraftView({
       baseEmissive(mesh);
       group.add(mesh);
       meshes[name] = mesh;
+    }
+
+    // Solar cells: draw the actual row-aware cell grid on the wing top surface (ported from
+    // solar-uav-design's _cell_quads). Cells are positioned in the wing-local frame, so we
+    // anchor them at the "Main wing" component center.
+    const wingCenter = geom["Main wing"]?.center ?? [0, 0, 0];
+    const hstabCenter = geom["Horizontal stabilizer"]?.center ?? [0, 0, 0];
+    const { wing: wingCells, hstab: hstabCells, side: cellSide } = solarCells(run.soln);
+    // One instanced mesh covers both surfaces; each cell is anchored at its surface's center.
+    const placed: [number, number, number][] = [
+      ...wingCells.map((c) => [wingCenter[0] + c[0], wingCenter[1] + c[1], wingCenter[2] + c[2]] as [number, number, number]),
+      ...hstabCells.map((c) => [hstabCenter[0] + c[0], hstabCenter[1] + c[1], hstabCenter[2] + c[2]] as [number, number, number]),
+    ];
+    if (placed.length) {
+      const cellGeo = new THREE.BoxGeometry(cellSide, cellSide, 0.003);
+      const cellMat = new THREE.MeshPhongMaterial({ color: 0x1a3a6b, emissive: 0x0a1a3a, emissiveIntensity: 0.35 });
+      const cells = new THREE.InstancedMesh(cellGeo, cellMat, placed.length);
+      const m4 = new THREE.Matrix4();
+      placed.forEach((p, i) => {
+        m4.setPosition(p[0], p[1], p[2]);
+        cells.setMatrixAt(i, m4);
+      });
+      cells.instanceMatrix.needsUpdate = true;
+      cells.userData = { name: "Solar cells", draggable: false };
+      group.add(cells);
+      meshes["Solar cells"] = cells as unknown as THREE.Mesh;
     }
 
     const cg = new THREE.Mesh(
@@ -353,56 +422,13 @@ export default function AircraftView({
   }, [showDims]);
 
   return (
-    <div className="flex flex-col md:flex-row h-full min-h-0">
-      <aside className="order-2 md:order-1 w-full md:w-64 flex flex-col min-h-0 flex-1 md:flex-none border-t md:border-t-0 md:border-r border-[var(--border)]">
-        <div className="flex items-center justify-between px-3 py-2">
-          <span className={`${LABEL}`}>Elements</span>
-          <button className={BTN} disabled={!dirty} onClick={() => apiRef.current?.reset()}>
-            Reset
-          </button>
-        </div>
-        <ul className="flex-1 overflow-y-auto">
-          {elements.map((el) => (
-            <li key={el.name}>
-              <button
-                onClick={() => setSelected(el.name === selected ? null : el.name)}
-                className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors ${
-                  selected === el.name ? "bg-[var(--card-2)] text-[var(--ink)]" : "hover:bg-[var(--card-2)]"
-                }`}
-              >
-                <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: el.color }} />
-                <span className="truncate flex-1">{el.name}</span>
-                {el.draggable && <span className="text-[var(--faint)] text-xs" title="movable">↔</span>}
-                <span className={`${MONO} text-xs text-[var(--muted)]`}>{el.mass.toFixed(2)}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-        <div className="px-3 py-2 border-t border-[var(--border)] text-xs text-[var(--muted)]">
-          {selected
-            ? elements.find((e) => e.name === selected)?.draggable
-              ? "Drag the arrows to move; CG updates live."
-              : "This element is fixed by geometry."
-            : "Select an element to move it."}
-        </div>
-      </aside>
-
-      <div className="order-1 md:order-2 relative min-w-0 bg-[var(--bg)] h-[55vh] shrink-0 md:h-auto md:flex-1">
+    <div className="flex h-full min-h-0">
+      <div className="relative min-w-0 flex-1 bg-[var(--bg)]">
         <div ref={mountRef} className="absolute inset-0 overflow-hidden" />
 
-        {/* Toggle for the overlay panels — keeps the canvas usable on small screens. */}
-        <button
-          className={`${BTN} absolute top-2 right-2 z-10`}
-          onClick={() => setPanelsOpen((v) => !v)}
-        >
-          {panelsOpen ? "Hide panels" : "Panels"}
-        </button>
-
-        <div
-          className={`absolute top-11 right-2 w-44 sm:w-56 max-h-[calc(100%-3.5rem)] overflow-y-auto flex-col gap-2 ${panelsOpen ? "flex" : "hidden"}`}
-        >
-          {/* View controls, stacked above the mass balance panel */}
-          <div className="bg-[var(--card)] border border-[var(--border)] rounded-md px-3 py-2">
+        <div className="absolute top-2 left-2 w-44 sm:w-56 max-h-[calc(100%-1rem)] overflow-y-auto flex flex-col gap-2">
+          {/* View controls */}
+          <Panel title="View">
             <label className="flex items-center justify-between cursor-pointer mb-2">
               <span className={`${LABEL}`}>Dimensions</span>
               <input type="checkbox" checked={showDims} onChange={(e) => setShowDims(e.target.checked)} className="accent-white" />
@@ -424,24 +450,97 @@ export default function AircraftView({
               }}
               className="w-full accent-white"
             />
-          </div>
+          </Panel>
 
-          <div className="bg-[var(--card)] border border-[var(--border)] rounded-md px-3 py-2">
-            <div className={`${LABEL} mb-1`}>Mass Balance</div>
-          <Row label="Total" value={`${total.mass.toFixed(3)} kg`} />
-          <Row label="CG x" value={`${total.x_cg.toFixed(4)} m`} />
-          <Row label="CG y" value={`${total.y_cg.toFixed(4)} m`} />
-          <Row label="CG z" value={`${total.z_cg.toFixed(4)} m`} />
-          <div className={`${LABEL} mt-2 mb-1`}>Moments of Inertia (kg·m²)</div>
-          <Row label="Ixx" value={total.Ixx.toFixed(3)} />
-          <Row label="Iyy" value={total.Iyy.toFixed(3)} />
-          <Row label="Izz" value={total.Izz.toFixed(3)} />
-          <Row label="Ixy" value={total.Ixy.toFixed(3)} />
-          <Row label="Ixz" value={total.Ixz.toFixed(3)} />
-          <Row label="Iyz" value={total.Iyz.toFixed(3)} />
-          </div>
+          {/* Per-component mass, drawn as a clickable horizontal bar table.
+              Click an element to select it; movable ones (↔) attach the move gizmo. */}
+          <Panel title="Components & Mass">
+            <div className="flex items-center justify-between">
+              <Row label="Total" value={`${total.mass.toFixed(3)} kg`} />
+              <button className={BTN} disabled={!dirty} onClick={() => apiRef.current?.reset()}>
+                Reset
+              </button>
+            </div>
+            <div className="mt-1.5 flex flex-col gap-1">
+              {elements.map((el) => (
+                <button
+                  key={el.name}
+                  onClick={() => setSelected(el.name === selected ? null : el.name)}
+                  className={`w-full text-left px-1 py-0.5 rounded-sm transition-colors ${
+                    selected === el.name ? "bg-[var(--card-2)]" : "hover:bg-[var(--card-2)]"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 text-[11px]">
+                    <span className="flex items-center gap-1 truncate text-[var(--muted)]">
+                      <span className="w-2 h-2 rounded-sm shrink-0" style={{ background: el.color }} />
+                      <span className="truncate">{el.name}</span>
+                      {el.draggable && <span className="text-[var(--faint)] shrink-0" title="movable">↔</span>}
+                    </span>
+                    <span className={`${MONO} shrink-0`}>
+                      {el.mass.toFixed(3)}
+                      <span className="text-[var(--faint)]">
+                        {" "}
+                        {total.mass > 0 ? ((el.mass / total.mass) * 100).toFixed(1) : "0.0"}%
+                      </span>
+                    </span>
+                  </div>
+                  <div className="mt-0.5 h-1.5 rounded-sm bg-[var(--card-2)] overflow-hidden">
+                    <div
+                      className="h-full rounded-sm"
+                      style={{ width: `${maxMass > 0 ? (el.mass / maxMass) * 100 : 0}%`, background: el.color }}
+                    />
+                  </div>
+                </button>
+              ))}
+            </div>
+            <div className="mt-2 text-[11px] text-[var(--muted)]">
+              {selected
+                ? elements.find((e) => e.name === selected)?.draggable
+                  ? "Drag the arrows to move; CG updates live."
+                  : "This element is fixed by geometry."
+                : "Select an element to move it."}
+            </div>
+          </Panel>
+
+          <Panel title="Mass Balance">
+            <Row label="Total" value={`${total.mass.toFixed(3)} kg`} />
+            <Row label="CG x" value={`${total.x_cg.toFixed(4)} m`} />
+            <Row label="CG y" value={`${total.y_cg.toFixed(4)} m`} />
+            <Row label="CG z" value={`${total.z_cg.toFixed(4)} m`} />
+            <div className={`${LABEL} mt-2 mb-1`}>Moments of Inertia (kg·m²)</div>
+            <Row label="Ixx" value={total.Ixx.toFixed(3)} />
+            <Row label="Iyy" value={total.Iyy.toFixed(3)} />
+            <Row label="Izz" value={total.Izz.toFixed(3)} />
+            <Row label="Ixy" value={total.Ixy.toFixed(3)} />
+            <Row label="Ixz" value={total.Ixz.toFixed(3)} />
+            <Row label="Iyz" value={total.Iyz.toFixed(3)} />
+          </Panel>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * A collapsible overlay panel. The header doubles as the toggle; a rotating chevron
+ * indicates open/closed state (replaces the old global "Hide panels" button).
+ */
+function Panel({ title, children }: { title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="bg-[var(--card)] border border-[var(--border)] rounded-md">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-3 py-2"
+      >
+        <span className={`${LABEL}`}>{title}</span>
+        <span
+          className={`text-[var(--muted)] text-xs transition-transform ${open ? "rotate-180" : ""}`}
+        >
+          ▾
+        </span>
+      </button>
+      {open && <div className="px-3 pb-2">{children}</div>}
     </div>
   );
 }

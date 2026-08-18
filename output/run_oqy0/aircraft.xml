@@ -26,32 +26,43 @@
       <Sections>
         <Section>
           <y_position>0.0</y_position>
-          <Chord>0.30999999000116885</Chord>
+          <Chord>0.3206040769126686</Chord>
           <xOffset>0.0</xOffset>
           <Dihedral>0.0</Dihedral>
-          <Twist>5.102887526041998</Twist>
-          <Left_Side_FoilName>s4110</Left_Side_FoilName>
-          <Right_Side_FoilName>s4110</Right_Side_FoilName>
+          <Twist>4.189153647088663</Twist>
+          <Left_Side_FoilName>s4310</Left_Side_FoilName>
+          <Right_Side_FoilName>s4310</Right_Side_FoilName>
           <x_number_of_panels>8</x_number_of_panels>
           <y_number_of_panels>8</y_number_of_panels>
         </Section>
         <Section>
-          <y_position>0.7546891432450897</y_position>
-          <Chord>0.30999999000116885</Chord>
+          <y_position>0.7812641976469317</y_position>
+          <Chord>0.3206040769126686</Chord>
           <xOffset>0.0</xOffset>
-          <Dihedral>6.603477348105744</Dihedral>
-          <Twist>5.102887526041998</Twist>
+          <Dihedral>1.998782629916412</Dihedral>
+          <Twist>4.189153647088663</Twist>
+          <Left_Side_FoilName>s4310</Left_Side_FoilName>
+          <Right_Side_FoilName>s4310</Right_Side_FoilName>
+          <x_number_of_panels>8</x_number_of_panels>
+          <y_number_of_panels>8</y_number_of_panels>
+        </Section>
+        <Section>
+          <y_position>1.5625283952938633</y_position>
+          <Chord>0.2838808875986811</Chord>
+          <xOffset>0.0</xOffset>
+          <Dihedral>1.9987826299164115</Dihedral>
+          <Twist>4.189153647088663</Twist>
           <Left_Side_FoilName>s4110</Left_Side_FoilName>
           <Right_Side_FoilName>s4110</Right_Side_FoilName>
           <x_number_of_panels>8</x_number_of_panels>
           <y_number_of_panels>8</y_number_of_panels>
         </Section>
         <Section>
-          <y_position>3.018756572980359</y_position>
-          <Chord>0.15499999500058442</Chord>
+          <y_position>3.1250567905877267</y_position>
+          <Chord>0.2104350091261465</Chord>
           <xOffset>0.0</xOffset>
           <Dihedral>0</Dihedral>
-          <Twist>5.102887526041998</Twist>
+          <Twist>4.189153647088663</Twist>
           <Left_Side_FoilName>s4110</Left_Side_FoilName>
           <Right_Side_FoilName>s4110</Right_Side_FoilName>
           <x_number_of_panels>8</x_number_of_panels>
@@ -62,7 +73,7 @@
     <wing>
       <Name>Horizontal Stabilizer</Name>
       <Type>ELEVATOR</Type>
-      <Position>1.2126515156663662,0.0,0.4179516609009025</Position>
+      <Position>1.1778837146222407,0.0,0.4173153378538231</Position>
       <Tilt_angle>0.0</Tilt_angle>
       <Symetric>True</Symetric>
       <isFin>false</isFin>
@@ -70,21 +81,21 @@
       <Sections>
         <Section>
           <y_position>0.0</y_position>
-          <Chord>0.12499999000199136</Chord>
+          <Chord>0.13499999003869648</Chord>
           <xOffset>0.0</xOffset>
           <Dihedral>0.0</Dihedral>
-          <Twist>-0.7335271591221816</Twist>
+          <Twist>3.901294954006404</Twist>
           <Left_Side_FoilName>naca0010</Left_Side_FoilName>
           <Right_Side_FoilName>naca0010</Right_Side_FoilName>
           <x_number_of_panels>8</x_number_of_panels>
           <y_number_of_panels>8</y_number_of_panels>
         </Section>
         <Section>
-          <y_position>0.7546891432450897</y_position>
-          <Chord>0.12499999000199136</Chord>
+          <y_position>0.7812641976469317</y_position>
+          <Chord>0.13499999003869648</Chord>
           <xOffset>0.0</xOffset>
           <Dihedral>0</Dihedral>
-          <Twist>-0.7335271591221816</Twist>
+          <Twist>3.901294954006404</Twist>
           <Left_Side_FoilName>naca0010</Left_Side_FoilName>
           <Right_Side_FoilName>naca0010</Right_Side_FoilName>
           <x_number_of_panels>8</x_number_of_panels>
@@ -95,7 +106,7 @@
     <wing>
       <Name>Vertical Stabilizer (XFLR5)</Name>
       <Type>FIN</Type>
-      <Position>1.1394135979416384,0.0,0.0</Position>
+      <Position>1.1073048766359037,0.0,0.0</Position>
       <Tilt_angle>0.0</Tilt_angle>
       <Symetric>true</Symetric>
       <isFin>true</isFin>
@@ -103,7 +114,7 @@
       <Sections>
         <Section>
           <y_position>0.0</y_position>
-          <Chord>0.2929516708989111</Chord>
+          <Chord>0.28231535194534785</Chord>
           <xOffset>0.0</xOffset>
           <Dihedral>0.0</Dihedral>
           <Twist>0.0</Twist>
@@ -113,9 +124,9 @@
           <y_number_of_panels>8</y_number_of_panels>
         </Section>
         <Section>
-          <y_position>0.4179516609009025</y_position>
-          <Chord>0.12499999000199136</Chord>
-          <xOffset>0.07323791772472776</xOffset>
+          <y_position>0.4173153378538231</y_position>
+          <Chord>0.13499999003869648</Chord>
+          <xOffset>0.07057883798633702</xOffset>
           <Dihedral>0</Dihedral>
           <Twist>0.0</Twist>
           <Left_Side_FoilName>naca0010</Left_Side_FoilName>

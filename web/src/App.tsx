@@ -12,7 +12,7 @@ import { BTN, BTN_ACCENT, BTN_ICON } from "./lib/ui";
 // In local dev we fall back to localhost; in a production build the Simulate button is
 // hidden unless VITE_AIRCRAFTSIM_URL is explicitly set to a reachable deployment.
 const AIRCRAFTSIM_URL =
-  import.meta.env.VITE_AIRCRAFTSIM_URL || (import.meta.env.DEV ? "http://localhost:3001" : "");
+  import.meta.env.VITE_AIRCRAFTSIM_URL || (import.meta.env.DEV ? "http://localhost:4310" : "");
 
 function PlaneIcon() {
   return (
