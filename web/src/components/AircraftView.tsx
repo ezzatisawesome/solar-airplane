@@ -12,6 +12,8 @@ interface SceneApi {
   reset: () => void;
   setOpacity: (v: number) => void;
   setDimsVisible: (v: boolean) => void;
+  setView: (name: "iso" | "top" | "side" | "front") => void;
+  setLayer: (name: "structure" | "cells" | "cg", v: boolean) => void;
 }
 
 /**
@@ -32,11 +34,26 @@ export default function AircraftView({
   const [dirty, setDirty] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [opacity, setOpacity] = useState(0.28);
+  const [showStructure, setShowStructure] = useState(true);
+  const [showCells, setShowCells] = useState(true);
+  const [showCG, setShowCG] = useState(true);
 
   const cbRef = useRef(onLayoutChange);
   cbRef.current = onLayoutChange;
   const opacityRef = useRef(opacity);
   opacityRef.current = opacity;
+
+  // Lets the in-scene click handler drive React selection (toggles off if re-clicked).
+  const selectRef = useRef<(name: string) => void>(() => {});
+  selectRef.current = (name: string) => setSelected((p) => (p === name ? null : name));
+
+  // Quarter-chord (aerodynamic reference) x, geometrically consistent with the drawn wing:
+  // wing mesh LE sits at center - 0.4*rootChord, so c/4 = center - 0.4c + 0.25c = center - 0.15c.
+  const x_c4 = useMemo(() => {
+    const wingX = run.massProperties.components["Main wing"]?.x_cg
+      ?? run.massProperties.positions["Main wing"]?.xyz[0] ?? 0;
+    return wingX - 0.15 * parseGeometry(run.soln).cRoot;
+  }, [run]);
 
   const [showDims, setShowDims] = useState(true);
   const dimsRef = useRef(showDims);
@@ -101,6 +118,7 @@ export default function AircraftView({
     // Meshes
     const meshes: Record<string, THREE.Mesh> = {};
     const structuralMats: THREE.MeshPhongMaterial[] = [];
+    const structureMeshes: THREE.Mesh[] = [];
     const makeMesh = (g: Geom, color: number): THREE.Mesh => {
       let geometry: THREE.BufferGeometry;
       if (g.type === "box") geometry = new THREE.BoxGeometry(g.Lx, g.Ly, g.Lz);
@@ -177,6 +195,7 @@ export default function AircraftView({
         m.opacity = opacityRef.current;
         m.depthWrite = opacityRef.current >= 1;
         structuralMats.push(m);
+        structureMeshes.push(mesh);
       }
       baseEmissive(mesh);
       group.add(mesh);
@@ -216,6 +235,15 @@ export default function AircraftView({
     const t0 = mp.total;
     cg.position.set(t0.x_cg, t0.y_cg, t0.z_cg);
     group.add(cg);
+
+    // Wing quarter-chord marker (blue) — the aerodynamic reference the CG is balanced against.
+    const wingCenterC4 = geom["Main wing"]?.center ?? [0, 0, 0];
+    const c4 = new THREE.Mesh(
+      new THREE.SphereGeometry(0.03, 12, 10),
+      new THREE.MeshPhongMaterial({ color: 0x8ab4f8, emissive: 0x8ab4f8, emissiveIntensity: 0.4 }),
+    );
+    c4.position.set(x_c4, 0, wingCenterC4[2]);
+    group.add(c4);
 
     // ---- In-scene dimension annotations (move/rotate with the aircraft) ----
     const dimsGroup = new THREE.Group();
@@ -321,6 +349,22 @@ export default function AircraftView({
     };
     renderer.domElement.addEventListener("pointermove", onDimMove);
 
+    // Click a part directly in the scene to select it (a small drag = orbit, so ignore those).
+    const selRay = new THREE.Raycaster();
+    let downAt: { x: number; y: number } | null = null;
+    const onDown = (e: PointerEvent) => (downAt = { x: e.clientX, y: e.clientY });
+    const onUp = (e: PointerEvent) => {
+      if (!downAt || Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 6) return;
+      if ((gizmo as unknown as { dragging: boolean }).dragging) return;
+      const r = renderer.domElement.getBoundingClientRect();
+      const pt = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+      selRay.setFromCamera(pt, camera);
+      const hits = selRay.intersectObjects(Object.values(meshes), false);
+      if (hits[0]) selectRef.current((hits[0].object as THREE.Mesh).userData.name as string);
+    };
+    renderer.domElement.addEventListener("pointerdown", onDown);
+    renderer.domElement.addEventListener("pointerup", onUp);
+
     let current: THREE.Mesh | null = null;
     apiRef.current = {
       select: (name) => {
@@ -341,6 +385,27 @@ export default function AircraftView({
       },
       setDimsVisible: (v) => {
         dimsGroup.visible = v;
+      },
+      setView: (name) => {
+        const R = 3.4;
+        const q = group.quaternion;
+        const dir = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z).applyQuaternion(q).normalize();
+        const fore = dir(1, 0, 0), span = dir(0, 1, 0), up = dir(0, 0, 1);
+        group.updateMatrixWorld();
+        const target = group.localToWorld(cg.position.clone());
+        let offset: THREE.Vector3;
+        if (name === "top") offset = up.multiplyScalar(R);
+        else if (name === "side") offset = span.multiplyScalar(R);
+        else if (name === "front") offset = fore.multiplyScalar(R);
+        else offset = fore.multiplyScalar(1.1).add(span.multiplyScalar(0.9)).add(up.multiplyScalar(0.9)).normalize().multiplyScalar(R);
+        camera.position.copy(target.clone().add(offset));
+        orbit.target.copy(target);
+        orbit.update();
+      },
+      setLayer: (name, v) => {
+        if (name === "structure") structureMeshes.forEach((m) => (m.visible = v));
+        else if (name === "cells") { if (meshes["Solar cells"]) meshes["Solar cells"].visible = v; }
+        else if (name === "cg") { cg.visible = v; c4.visible = v; }
       },
       reset: () => {
         for (const k of Object.keys(layout)) delete layout[k];
@@ -398,6 +463,8 @@ export default function AircraftView({
       });
       grid.dispose();
       renderer.domElement.removeEventListener("pointermove", onDimMove);
+      renderer.domElement.removeEventListener("pointerdown", onDown);
+      renderer.domElement.removeEventListener("pointerup", onUp);
       renderer.forceContextLoss();
       renderer.dispose();
       mount.removeChild(renderer.domElement);
@@ -413,6 +480,16 @@ export default function AircraftView({
     apiRef.current?.setDimsVisible(showDims);
   }, [showDims]);
 
+  useEffect(() => {
+    apiRef.current?.setLayer("structure", showStructure);
+  }, [showStructure]);
+  useEffect(() => {
+    apiRef.current?.setLayer("cells", showCells);
+  }, [showCells]);
+  useEffect(() => {
+    apiRef.current?.setLayer("cg", showCG);
+  }, [showCG]);
+
   return (
     <div className="flex h-full min-h-0">
       <div className="relative min-w-0 flex-1 bg-[var(--bg)]">
@@ -421,10 +498,25 @@ export default function AircraftView({
         <div className="absolute top-2 left-2 w-44 sm:w-56 max-h-[calc(100%-1rem)] overflow-y-auto flex flex-col gap-2">
           {/* View controls */}
           <Panel title="View">
-            <label className="flex items-center justify-between cursor-pointer mb-2">
-              <span className={`${LABEL}`}>Dimensions</span>
-              <input type="checkbox" checked={showDims} onChange={(e) => setShowDims(e.target.checked)} className="accent-white" />
-            </label>
+            <div className="flex gap-1 mb-2">
+              {(["iso", "top", "side", "front"] as const).map((v) => (
+                <button
+                  key={v}
+                  onClick={() => apiRef.current?.setView(v)}
+                  className="flex-1 px-1 py-0.5 text-[11px] capitalize rounded-sm bg-[var(--card-2)] text-[var(--muted)] hover:text-[var(--ink)] hover:brightness-110 transition-colors"
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+            <Toggle label="Dimensions" checked={showDims} onChange={setShowDims} />
+            <Toggle label="Structure" checked={showStructure} onChange={setShowStructure} />
+            <Toggle label="Solar cells" checked={showCells} onChange={setShowCells} />
+            <Toggle label="CG / c/4" checked={showCG} onChange={setShowCG} />
+            <div className="flex gap-3 my-1.5 text-[10px] text-[var(--muted)]">
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: "#ff3b30" }} />CG</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: "#8ab4f8" }} />c/4</span>
+            </div>
             <div className="flex items-center justify-between mb-1">
               <span className={`${LABEL}`}>Structure opacity</span>
               <span className={`${MONO} text-xs text-[var(--muted)]`}>{Math.round(opacity * 100)}%</span>
@@ -499,6 +591,8 @@ export default function AircraftView({
             <Row label="CG x" value={`${total.x_cg.toFixed(4)} m`} />
             <Row label="CG y" value={`${total.y_cg.toFixed(4)} m`} />
             <Row label="CG z" value={`${total.z_cg.toFixed(4)} m`} />
+            <Row label="c/4 x" value={`${x_c4.toFixed(4)} m`} />
+            <Row label="CG − c/4" value={`${(total.x_cg - x_c4).toFixed(4)} m`} />
             <div className={`${LABEL} mt-2 mb-1`}>Moments of Inertia (kg·m²)</div>
             <Row label="Ixx" value={total.Ixx.toFixed(3)} />
             <Row label="Iyy" value={total.Iyy.toFixed(3)} />
@@ -534,6 +628,15 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
       </button>
       {open && <div className="px-3 pb-2">{children}</div>}
     </div>
+  );
+}
+
+function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="flex items-center justify-between cursor-pointer mb-1.5">
+      <span className={`${LABEL}`}>{label}</span>
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="accent-white" />
+    </label>
   );
 }
 

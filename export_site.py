@@ -105,6 +105,18 @@ def main(arg: str | None) -> None:
     if not run_dirs:
         raise SystemExit("No runs found to export.")
 
+    # On a FULL export, prune orphaned run JSONs in web/public/runs/ whose output/<run> dir no
+    # longer exists, so the site's run list always matches what's actually under output/.
+    if not arg:
+        valid_ids = {rd.name for rd in run_dirs}
+        runs_public = PUBLIC_DIR / "runs"
+        if runs_public.exists():
+            for f in runs_public.glob("run_*.json"):
+                rid = f.name[:-len(".sensitivity.json")] if f.name.endswith(".sensitivity.json") else f.stem
+                if rid not in valid_ids:
+                    f.unlink()
+                    print(f"[export] pruned orphan {f.name} (no output/{rid})")
+
     runs = []
     for rd in run_dirs:
         entry = export_run(rd)

@@ -114,10 +114,10 @@ export function reconstructGeometry(
         span: hstab_span, thickness: Math.max(t_tail, 0.003), mass,
       };
     } else if (name.includes("Vertical stabilizer")) {
-      // Tapered fin: root chord at the boom, tip chord = hstab chord at the top.
+      // Adam-style straddling fin: rectangular (same chord top and bottom), centered on z=0.
       out[name] = {
         type: "wing", center, axis: "z",
-        rootChord: Math.max(vstab_root_chord, 1e-6), tipChord: Math.max(hstab_chord, 1e-6),
+        rootChord: Math.max(vstab_root_chord, 1e-6), tipChord: Math.max(vstab_root_chord, 1e-6),
         span: Math.max(vstab_span, 1e-6), thickness: Math.max(t_tail, 0.003), mass,
       };
     } else if (name === "Boom L" || name === "Boom R") {
@@ -203,14 +203,19 @@ export function solarCells(soln: Record<string, any>): {
   budget = nHstab; // hstab gets exactly the optimizer's overflow count
   if (budget > 0 && hChord > 0 && hSpan > 0) {
     const xLE = -0.4 * hChord + 0.1 * hChord;      // LE at -0.4c (mesh convention) + 10% margin
-    const nRows = Math.floor((0.6 * hChord) / pitch); // panel-able band is 60% of chord
-    const nCols = Math.floor(hSpan / pitch);
-    const y0 = -((nCols - 1) * pitch) / 2;          // centered spanwise
-    for (let col = 0; col < nCols && budget > 0; col++) {
+    const nRows = Math.max(1, Math.floor((0.6 * hChord) / pitch)); // >=1 panel-able chordwise row
+    const nCols = Math.floor(hSpan / pitch);        // ~11 cells across a 1.5 m span at 0.13 pitch
+    const cells = Math.min(Math.round(budget), nRows * nCols);
+    // Center the ACTUAL drawn array in the middle of the hstab span (not the theoretical full row),
+    // so a partially-filled row still sits symmetric about the centerline.
+    const drawnCols = Math.min(nCols, Math.ceil(cells / nRows));
+    const y0 = -((drawnCols - 1) * pitch) / 2;
+    let placed = 0;
+    for (let col = 0; col < drawnCols && placed < cells; col++) {
       const yc = y0 + col * pitch;
-      for (let r = 0; r < nRows && budget > 0; r++) {
+      for (let r = 0; r < nRows && placed < cells; r++) {
         hstabCells.push([xLE + (r + 0.5) * pitch, yc, hZ]);
-        budget--;
+        placed++;
       }
     }
   }

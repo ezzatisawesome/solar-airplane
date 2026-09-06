@@ -105,8 +105,13 @@ def default_positions(soln: dict) -> Dict[str, dict]:
     hstab_chord = float(hstab.get("hstab_chordlen", 0))
 
     avionics_x = x_cg_assumed + 0.33 * c_root  # Third chord
-    hstab_x = boom_len + vstab_root_chord / 4 + 0.25 * hstab_chord
-    hstab_z = vstab_span
+    # Adam-style tail: H-stab in the wing/boom plane (z=0), fins STRADDLE it (z centered on 0),
+    # fins sit aft of the H-stab trailing edge. (Was a T-tail: hstab_z = vstab_span.)
+    hstab_x = boom_len + 0.25 * hstab_chord    # H-stab LE at the boom aft-end
+    hstab_z = 0.0                              # in line with the booms
+    vstab_x = boom_len + hstab_chord + 0.25 * vstab_root_chord   # fin LE aft of the H-stab TE
+    fuse_len = float(geometry.get("fuselage_length", 0.98))      # pod length (Adam: 0.98 m)
+    prop_x = -fuse_len                         # prop at the FRONT of the fuselage pod
 
     def entry(xyz, kind, draggable, category):
         return {"xyz": [float(xyz[0]), float(xyz[1]), float(xyz[2])],
@@ -116,12 +121,12 @@ def default_positions(soln: dict) -> Dict[str, dict]:
         # Structural surfaces (geometry-tied, not draggable)
         "Main wing": entry((x_cg_assumed, 0.0, 0.0), "box", False, "structure"),
         "Horizontal stabilizer": entry((hstab_x, 0.0, hstab_z), "box", False, "structure"),
-        "Vertical stabilizer L": entry((boom_len + 0.25 * vstab_root_chord, boom_y, 0.5 * vstab_span), "box", False, "structure"),
-        "Vertical stabilizer R": entry((boom_len + 0.25 * vstab_root_chord, -boom_y, 0.5 * vstab_span), "box", False, "structure"),
+        "Vertical stabilizer L": entry((vstab_x, boom_y, 0.0), "box", False, "structure"),
+        "Vertical stabilizer R": entry((vstab_x, -boom_y, 0.0), "box", False, "structure"),
         "Boom L": entry((0.5 * boom_len, boom_y, -0.02), "cylinder", False, "structure"),
         "Boom R": entry((0.5 * boom_len, -boom_y, -0.02), "cylinder", False, "structure"),
-        "Fuselage L": entry((-0.25, boom_y, -0.02), "cylinder", False, "structure"),
-        "Fuselage R": entry((-0.25, -boom_y, -0.02), "cylinder", False, "structure"),
+        "Fuselage L": entry((-0.5 * fuse_len, boom_y, -0.02), "cylinder", False, "structure"),
+        "Fuselage R": entry((-0.5 * fuse_len, -boom_y, -0.02), "cylinder", False, "structure"),
         "Solar cells": entry((x_cg_assumed + 0.25 * c_root, 0.0, 0.001), "box", False, "structure"),
         # Battery pack (box, but relocatable for CG tuning)
         "Batteries": entry((x_cg_assumed + 0.25 * c_root, 0.0, 0.0), "box", True, "power"),
@@ -136,12 +141,12 @@ def default_positions(soln: dict) -> Dict[str, dict]:
         "Navlight Center": entry((avionics_x, 0.0, 0.0), "point", True, "avionics"),
         "Navlight Hstab": entry((hstab_x + 0.33 * hstab_chord, 0.0, hstab_z), "point", True, "avionics"),
         # Propulsion point masses
-        "Motor L": entry((-0.5, boom_y, -0.02), "point", True, "propulsion"),
-        "Motor R": entry((-0.5, -boom_y, -0.02), "point", True, "propulsion"),
-        "ESC L": entry((-0.25, boom_y, -0.01), "point", True, "propulsion"),
-        "ESC R": entry((-0.25, -boom_y, -0.01), "point", True, "propulsion"),
-        "Prop L": entry((-0.5, boom_y, 0.0), "disk", False, "propulsion"),
-        "Prop R": entry((-0.5, -boom_y, 0.0), "disk", False, "propulsion"),
+        "Motor L": entry((prop_x + 0.06, boom_y, -0.02), "point", True, "propulsion"),
+        "Motor R": entry((prop_x + 0.06, -boom_y, -0.02), "point", True, "propulsion"),
+        "ESC L": entry((-0.5 * fuse_len, boom_y, -0.01), "point", True, "propulsion"),
+        "ESC R": entry((-0.5 * fuse_len, -boom_y, -0.01), "point", True, "propulsion"),
+        "Prop L": entry((prop_x, boom_y, 0.0), "disk", False, "propulsion"),
+        "Prop R": entry((prop_x, -boom_y, 0.0), "disk", False, "propulsion"),
         # Structural interfaces & power boards (point masses)
         "Superstructure L": entry((x_cg_assumed, boom_y, 0.0), "point", True, "structure"),
         "Superstructure R": entry((x_cg_assumed, -boom_y, 0.0), "point", True, "structure"),
@@ -149,8 +154,8 @@ def default_positions(soln: dict) -> Dict[str, dict]:
         "Power board R": entry((x_cg_assumed, -boom_y, 0.0), "point", True, "power"),
         "Boom_vstab interface L": entry((boom_len, boom_y, -0.02), "point", True, "structure"),
         "Boom_vstab interface R": entry((boom_len, -boom_y, -0.02), "point", True, "structure"),
-        "Vstab_hstab interface L": entry((boom_len + vstab_root_chord / 4, boom_y, vstab_span), "point", True, "structure"),
-        "Vstab_hstab interface R": entry((boom_len + vstab_root_chord / 4, -boom_y, vstab_span), "point", True, "structure"),
+        "Vstab_hstab interface L": entry((vstab_x, boom_y, 0.0), "point", True, "structure"),
+        "Vstab_hstab interface R": entry((vstab_x, -boom_y, 0.0), "point", True, "structure"),
     }
     return positions
 
@@ -199,11 +204,9 @@ def compute_mass_properties(soln: dict, layout: Dict[str, list] = None) -> dict:
     boom_radius = float(geometry.get("boom_radius", 0.01))
     solar_panel_side_length = float(power.get("solar_panel_side_length", 0.125))
     
-    # Fuselage dimensions from opti.py
-    # Fuselage length: 0.5m (from x=-0.5 to x=0)
-    # Fuselage radius: 0.4 * dae51 airfoil max thickness
-    fuselage_length = 0.5
-    fuselage_radius = 0.4 * asb.Airfoil("dae51").max_thickness()
+    # Fuselage dimensions (Adam's CAD pod): read the length from the soln (0.98 m), constant radius.
+    fuselage_length = float(geometry.get("fuselage_length", 0.98))
+    fuselage_radius = float(geometry.get("fuselage_radius", 0.0281))
     
     # Battery box dimensions for moment of inertia calculation
     batt_box = [0.20, 0.10, 0.03]  # [Lx, Ly, Lz] in meters

@@ -167,13 +167,6 @@
       </output>
     </channel>
 
-    <channel name="rudder">
-      <input> fcs/rudder-cmd-norm </input>
-      <output name="rudder-pos-rad" unit="RAD">
-        <gain> 0.35 </gain> <!-- +/- 20 deg -->
-      </output>
-    </channel>
-
     <channel name="throttle">
       <input> fcs/throttle-cmd-norm </input>
       <output name="throttle_act">

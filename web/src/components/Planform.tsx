@@ -1,10 +1,10 @@
 import { useState } from "react";
 import type { RunState } from "../lib/types";
-import { parseGeometry } from "../lib/geometry";
+import { parseGeometry, solarCells } from "../lib/geometry";
 import Field from "./Field";
 import { LABEL, MONO } from "../lib/ui";
 
-type Rect = { x: number; y: number; w: number; h: number; fill?: string };
+type Rect = { x: number; y: number; w: number; h: number; fill?: string; stroke?: string; strokeWidth?: number };
 type Poly = { points: [number, number][]; fill?: string };
 type Line = { x1: number; y1: number; x2: number; y2: number; dash?: boolean };
 // A dimension: the measurement line + its label, and the aircraft edge it refers to (highlighted on hover).
@@ -22,6 +22,7 @@ export default function Planform({ run }: { run: RunState }) {
     hstabSpan: hs, vstabSpan: vspan, vstabRootChord: vrc, fuseLen,
   } = parseGeometry(run.soln);
   const fuseR = run.constants?.fuselage_radius ?? 0.04;
+  const [showCells, setShowCells] = useState(true);
 
   if (!b || !c) return <div className="p-4 text-[var(--muted)]">No geometry for this run.</div>;
   const hx = bl + vrc / 4;
@@ -35,6 +36,23 @@ export default function Planform({ run }: { run: RunState }) {
   const topRects: Rect[] = [
     { x: -hs / 2, y: hx, w: hs, h: htc },
   ];
+
+  // Solar-cell grid overlay. solarCells() returns cell centers in each surface's LOCAL frame
+  // (LE at x = -0.4*chord); map to planform coords: span = y, chord = x_local + 0.4*chord.
+  const cellSide = run.soln.Power?.solar_panel_side_length ?? 0.125;
+  const cells = solarCells(run.soln);
+  const CELL = "#3d6d99";
+  const cellRects: Rect[] = [
+    ...cells.wing.map((p) => ({
+      x: p[1] - cellSide / 2, y: p[0] + 0.4 * c - cellSide / 2, w: cellSide, h: cellSide,
+      fill: CELL, stroke: "#2a4d6e", strokeWidth: 0.6,
+    })),
+    ...cells.hstab.map((p) => ({
+      x: p[1] - cellSide / 2, y: hx + p[0] + 0.4 * htc - cellSide / 2, w: cellSide, h: cellSide,
+      fill: CELL, stroke: "#2a4d6e", strokeWidth: 0.6,
+    })),
+  ];
+  const nCells = cells.wing.length + cells.hstab.length;
   const topLines: Line[] = [
     { x1: 0, y1: 0, x2: Math.max(c, hx + 0.12), y2: 0, dash: true },
     { x1: by, y1: 0.25 * c, x2: by, y2: bl },
@@ -92,7 +110,14 @@ export default function Planform({ run }: { run: RunState }) {
           ]}
         />
       </div>
-      <View title="Top view" rects={topRects} polys={topPolys} lines={topLines} dims={topDims} flipV W={W} margin={margin} scale={scale} />
+      <div>
+        <label className="flex items-center gap-2 text-xs text-[var(--muted)] mb-1 cursor-pointer w-fit">
+          <input type="checkbox" checked={showCells} onChange={(e) => setShowCells(e.target.checked)} className="accent-[#3d6d99]" />
+          Solar cells
+          <span className={`${MONO} text-[var(--faint)]`}>{nCells} on wing + h-stab</span>
+        </label>
+        <View title="Top view" rects={showCells ? [...topRects, ...cellRects] : topRects} polys={topPolys} lines={topLines} dims={topDims} flipV W={W} margin={margin} scale={scale} />
+      </div>
       <View title="Side view" rects={sideRects} lines={sideLines} dims={sideDims} W={W} margin={margin} scale={scale} />
     </div>
   );
@@ -162,7 +187,7 @@ function View({
           <g key={i}>{L(l, { stroke: "var(--muted)", strokeWidth: 1.5, strokeDasharray: l.dash ? "6 6" : undefined })}</g>
         ))}
         {rects.map((r, i) => (
-          <rect key={i} x={X(r.x)} y={Y(flipV ? r.y : r.y + r.h)} width={r.w * scale} height={r.h * scale} fill={r.fill ?? "var(--card-2)"} stroke="var(--ink)" strokeWidth={1.5} />
+          <rect key={i} x={X(r.x)} y={Y(flipV ? r.y : r.y + r.h)} width={r.w * scale} height={r.h * scale} fill={r.fill ?? "var(--card-2)"} stroke={r.stroke ?? "var(--ink)"} strokeWidth={r.strokeWidth ?? 1.5} />
         ))}
         {polys.map((p, i) => (
           <polygon key={`p${i}`} points={p.points.map((pt) => `${X(pt[0])},${Y(pt[1])}`).join(" ")} fill={p.fill ?? "var(--card-2)"} stroke="var(--ink)" strokeWidth={1.5} />

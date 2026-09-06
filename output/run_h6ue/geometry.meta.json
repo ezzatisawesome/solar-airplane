@@ -1,0 +1,15 @@
+{
+  "name": "run_h6ue",
+  "frame": {
+    "up": "+Z",
+    "forward": "-X",
+    "right": "+Y",
+    "note": "AeroSandbox body frame (x-aft, y-starboard, z-up); Commandant's HeadingPitchRoll(0,90,180) stands it up level."
+  },
+  "reference": {
+    "span_m": 5.981121063232422,
+    "length_m": 2.3034756183624268,
+    "vertices": 4622,
+    "triangles": 8944
+  }
+}

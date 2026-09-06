@@ -67,6 +67,10 @@ export function exportData(): Plugin {
       };
       server.watcher.on("add", onChange);
       server.watcher.on("change", onChange);
+      server.watcher.on("unlink", onChange);       // a run's json deleted -> re-export prunes it
+      server.watcher.on("unlinkDir", (dir: string) => {
+        if (/[\\/]output[\\/]run_[a-z0-9]+$/i.test(dir)) onChange(path.join(dir, "soln.json"));
+      });
     },
   };
 }
